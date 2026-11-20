@@ -213,14 +213,14 @@ kubectl --context "<context>" get --raw "/api/v1/namespaces/airflow/services/air
 
 성공: JSON이 출력되고 DB(`metadatabase`)와 `scheduler`의 `status`가 `healthy`입니다. 이 조회는 성공하는데 `make airflow-smoke KUBE_CONTEXT="<context>"`가 실패하면 원인은 Ingress·공용 Traefik·TLS·DNS 쪽입니다.
 
-아래는 PC 브라우저로 같은 Service를 볼 때의 참고입니다. port-forward는 터미널을 점유하고 Ctrl+C로 종료해야 하므로 운영 agent의 절차에는 쓰지 않습니다.
+아래는 PC 브라우저로 같은 Service를 볼 때의 참고입니다. port-forward는 터미널을 점유하고 Ctrl+C로 종료해야 하므로 운영 agent의 절차에는 쓰지 않습니다. 둘째 줄은 port-forward를 실행한 서버에 자기 PC에서 SSH로 접속할 수 있는 사용자만 쓰는 터널입니다. 사내 서버 사이에서는 SSH를 쓸 수 없습니다.
 
 ```text
 kubectl --context "<context>" -n airflow port-forward svc/airflow-api-server 8080:8080
 ssh -N -L 8080:127.0.0.1:8080 <port-forward 실행 서버 user@host>
 ```
 
-첫 줄을 실행한 컴퓨터의 브라우저에서 `http://localhost:8080`에 접속하고, 원격 서버에서 실행했다면 접속을 확인할 PC에서 둘째 줄의 SSH 터널을 연결합니다.
+첫 줄을 실행한 컴퓨터의 브라우저에서 `http://localhost:8080`에 접속하고, 원격 서버에서 실행했다면 그 서버에 SSH로 접속할 수 있는 PC에서 둘째 줄의 터널을 연결합니다.
 
 HTTPS는 `AIRFLOW_WEBSERVER_BASE_URL`로도 접속합니다. DNS는 Ingress 진입 주소를 가리키며 루트 경로(`/`)를 앱에 그대로 전달합니다.
 화면에서 확인할 항목은 다음과 같으며 [화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법으로 확인합니다.

@@ -64,7 +64,7 @@ env 파일 키의 의미·형식과 그 밖의 실행 입력은 [환경설정](d
    실패하면 JSON의 `failedStep`에 따라 조치한 뒤 같은 명령을 다시 실행합니다.
    - `preflight`: `blocked`의 `item`을 봅니다. `먼저 필요한 앱 ingress`·`먼저 필요한 앱 keycloak`이면 그 앱의 가이드로 먼저 배포합니다. `chart`면 [파일 반입](../shared/docs/infrastructure/access.md#파일-반입), `사내 CA 묶음`·`공용 TLS headlamp.etch.samsungds.net`이면 [인증서 발급](../shared/docs/infrastructure/access.md#인증서-발급) 절로 파일을 준비합니다. `앱 검사`면 `make headlamp-check KUBE_CONTEXT="<context>"`를 직접 실행해 `Headlamp 실행 실패:` 줄을 확인합니다.
    - `headlamp-check`·`headlamp-oidc-setup`·`headlamp-up`·`headlamp-smoke`: [문제 해결과 멈춤 조건](#문제-해결과-멈춤-조건)의 표에서 같은 오류 문구를 찾습니다.
-2. [승인] 모든 제어면의 API server OIDC 설정. 사전 준비 표의 완료 확인에서 `--oidc-issuer-url=`이 없는 제어면이 있을 때 수행합니다. API server가 다시 시작되므로 대상 제어면, 적용할 [계약](docs/02-authentication.md#api-server-인증), 영향을 보여 주고 승인받은 뒤 [API server OIDC 인증](../shared/docs/kubernetes/oidc.md) 문서의 절차를 [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 한 번에 한 대씩 수행합니다. CA 파일은 1단계가 만든 `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`입니다.
+2. [승인] 모든 제어면의 API server OIDC 설정. 사전 준비 표의 완료 확인에서 `--oidc-issuer-url=`이 없는 제어면이 있을 때 수행합니다. API server가 다시 시작되므로 대상 제어면, 적용할 [계약](docs/02-authentication.md#api-server-인증), 영향을 보여 주고 승인받은 뒤 [API server OIDC 인증](../shared/docs/kubernetes/oidc.md) 문서의 절차를 [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)으로 한 번에 한 대씩 수행합니다. CA 파일은 1단계가 만든 `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`입니다.
    성공: 사전 준비 표의 완료 확인 명령에서 모든 줄에 `--oidc-issuer-url=`이 있고 [완료 확인](docs/02-authentication.md#2-완료-확인)의 `/readyz`가 `ok`입니다.
    이 설정이 없어도 1단계 배포와 smoke는 성공합니다. 설정 전에는 로그인 후 자원 조회가 401로 실패합니다.
 3. [조회] [C. 배포 후 확인](#c-배포-후-확인)

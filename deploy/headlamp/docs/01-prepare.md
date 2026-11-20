@@ -28,10 +28,10 @@ Keycloak realm을 재생성하거나 Portal용 등록 명령을 실행하지 않
 | 실행 위치 | 하는 일 | 접근 방법 |
 | --- | --- | --- |
 | 관리 호스트의 저장소 루트 | `make`·`kubectl` 실행, Keycloak client·그룹 등록과 조회 | [Kubernetes API](../../shared/docs/infrastructure/access.md#kubernetes-api), [Keycloak 관리 API](../../shared/docs/infrastructure/access.md#keycloak-관리-api) |
-| 각 제어면 | API server OIDC 설정. [API server 인증](02-authentication.md#api-server-인증)에서만 사용 | [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh) |
+| 각 제어면 | API server OIDC 설정. [API server 인증](02-authentication.md#api-server-인증)에서만 사용 | [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행) |
 | 브라우저 | Headlamp 로그인 확인 | [화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인) |
 
-`kubectl --context`를 바꿔도 SSH 접속 대상은 바뀌지 않으므로 실행 위치를 구분합니다.
+제어면에서 실행하는 블록은 관리 호스트의 셸에서 그대로 실행하지 않습니다. 노드 명령 실행 도구에 대상 제어면의 노드 이름을 지정해 전달하므로 실행 위치를 구분합니다.
 
 [조회] 관리 호스트의 도구와 기존 Ingress를 확인합니다.
 

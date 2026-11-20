@@ -29,7 +29,7 @@
 `keycloak-up`이 PV를 처음 만들 때 PostgreSQL 이미지 Job으로 DB 폴더를 root 소유 0700으로 만듭니다. 기존 폴더와 DB 파일은 바꾸지 않습니다.
 `/appdata`가 데이터 디스크에 마운트돼 있지 않으면 폴더가 OS 디스크에 만들어지므로 배포 전에 마운트를 확인합니다. 데이터 경로의 기준은 [Worker 앱 데이터 경로](../../shared/docs/infrastructure/operations.md#worker-앱-데이터-경로와-이전)에 있습니다.
 
-실행 위치는 원본(`k8s/server/stack.yaml`의 `nodeSelector`)에 지정한 worker `khplane01w09`입니다. [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+실행 위치는 원본(`k8s/server/stack.yaml`의 `nodeSelector`)에 지정한 worker `khplane01w09`입니다. 이 절의 블록은 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다.
 
 [조회] 마운트와 여유 공간, 기존 폴더를 확인합니다.
 

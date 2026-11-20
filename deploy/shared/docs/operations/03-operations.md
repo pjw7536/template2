@@ -29,7 +29,7 @@ Git 갱신만으로 실행 중인 앱·Secret·DB는 바뀌지 않습니다. 변
 
 ## Worker 추가
 
-[Worker 추가](../kubernetes/worker.md)에서 프로그램 준비 → 가입 → Ready·네트워크 확인 순서로 진행합니다. 새 서버와 CP1에서 하는 단계는 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+[Worker 추가](../kubernetes/worker.md)에서 프로그램 준비 → 가입 → Ready·네트워크 확인 순서로 진행합니다. 새 서버에서 하는 단계는 [가입 전 노드](../infrastructure/access.md#가입-전-노드), CP1에서 하는 단계는 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행) 절의 방법으로 수행합니다.
 
 - 새 노드의 이름·주소·역할은 [서버·노드](../infrastructure/servers.md)와 [별칭 표](../infrastructure/aliases.json)에 기록합니다.
 - 앱 데이터를 둘 Worker면 [Worker 앱 데이터 경로](../infrastructure/operations.md#worker-앱-데이터-경로와-이전)의 디스크 확인을 먼저 합니다.

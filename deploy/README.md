@@ -270,7 +270,7 @@ make <app>-image KUBE_CONTEXT="<context>"
 | 증상 | 먼저 볼 것 | 조치 |
 | --- | --- | --- |
 | kubectl timeout / Forbidden | API VIP·인증서·context / 계정 권한 | [Kubernetes API](shared/docs/infrastructure/access.md#kubernetes-api) 절로 확인. 해결되지 않으면 보고 |
-| Node NotReady | 런타임·kubelet·CNI·디스크·시간 | [노드 SSH](shared/docs/infrastructure/access.md#노드-ssh)로 `systemctl status kubelet containerd`와 디스크를 [조회]. 재시작은 [승인] |
+| Node NotReady | 런타임·kubelet·CNI·디스크·시간 | [노드 명령 실행](shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'df -hT; systemctl status kubelet containerd'`로 디스크와 서비스 상태를 [조회]. kubelet이 멈춘 노드에는 명령을 실행할 Job이 뜨지 않으므로, `노드 명령 실패`나 시간 초과면 노드 이름과 `kubectl --context "<context>" describe node <노드>`의 `Conditions`를 보고합니다. 재시작은 [승인] |
 | Pending, PVC Pending | events의 자원·taint·nodeSelector·StorageClass·PV affinity | 보고. PV·PVC를 지우거나 다시 만들지 않음 |
 | ImagePullBackOff | 이미지 tag·사내 미러·CA·노드의 이미지 접근 | [변경] 사내 빌드 이미지가 저장소에 없으면 `make <app>-image KUBE_CONTEXT="<context>"`. 노드가 저장소 인증서를 신뢰하지 않으면 [노드의 CA 신뢰](registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰) |
 | CrashLoopBackOff | `logs --previous`, 종료 코드, env·DB 연결 | env 오류면 보고. 일시 오류면 [변경] `kubectl --context "<context>" -n <namespace> rollout restart <워크로드>` 한 번 |

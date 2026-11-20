@@ -34,7 +34,7 @@ Worker의 Ready·hostname label·taint, 기존 PV/PVC, 공용 TLS와 라우팅�
 서버 컨테이너는 `minio` binary를 직접 실행하고 데이터 경로 `/data`를 사용하며, UID 0으로 실행하고 기존 볼륨의 소유권을 자동 변경하지 않습니다.
 기존 데이터가 있으면 사용 중인 버전과의 호환성·백업·복원 절차를 확인한 뒤 이미지를 갱신합니다. 이미지 버전 변경은 [가이드 B](../README.md#b-업데이트)의 [승인] 행입니다.
 
-두 이미지의 경로·tag 제공 여부와 대상 아키텍처는 실제 Worker에서 확인합니다. 이미지 pull은 `minio-up`에서 확인되며, 미리 확인하려면 Worker에서 받아 봅니다. Worker가 관리 호스트와 다른 노드면 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행하고, `<이미지>`에는 env의 `MINIO_IMAGE`와 `MINIO_CLIENT_IMAGE` 값을 차례로 넣습니다.
+두 이미지의 경로·tag 제공 여부와 대상 아키텍처는 실제 Worker에서 확인합니다. 이미지 pull은 `minio-up`에서 확인되며, 미리 확인하려면 Worker에서 받아 봅니다. Worker가 관리 호스트와 다른 노드면 관리 호스트에서 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--command`로 전달하고, `<이미지>`에는 env의 `MINIO_IMAGE`와 `MINIO_CLIENT_IMAGE` 값을 차례로 넣습니다.
 
 [변경] Worker의 이미지 저장소에 이미지를 받습니다.
 

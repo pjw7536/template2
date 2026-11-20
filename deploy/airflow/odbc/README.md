@@ -22,7 +22,7 @@ deploy/airflow/odbc/
 
 현재 `env/k8s.env`의 `ODBC_HOST_PATH`는 `/appdata/airflow/odbc`입니다.
 이 프로젝트 폴더에 파일을 넣는 것만으로 실행 중인 Airflow에 반영되지는 않습니다.
-입력 파일을 `NODE_NAME`으로 선택한 Worker(`khinfow01`)에 전달하고 해당 경로에 배치합니다. Worker에서 실행하는 명령은 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+입력 파일을 `NODE_NAME`으로 선택한 Worker(`khinfow01`)에 전달하고 해당 경로에 배치합니다. Worker에서 실행하는 블록은 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다.
 Worker의 그 경로에 운영 파일이 이미 있고 바꿀 내용이 없으면 3번의 확인만 합니다.
 
 1. [변경] 관리 호스트의 저장소 루트에서 이 폴더의 실제 파일을 tar로 묶습니다. 클러스터와 Worker는 바꾸지 않습니다. `odbc.ini`가 없거나 비어 있으면 묶지 않습니다.
@@ -37,16 +37,16 @@ Worker의 그 경로에 운영 파일이 이미 있고 바꿀 내용이 없으�
 
    성공: `./odbc.ini`가 들어 있는 파일 목록이 출력됩니다. 출력이 없으면 `odbc.ini`가 준비되지 않은 것이므로 위의 파일 반입부터 합니다.
 
-2. [변경] `$HOME/airflow-odbc.tar`를 노드 SSH의 파일 전송 형식으로 `khinfow01`의 `/tmp/airflow-odbc.tar`에 복사한 뒤 `khinfow01`에서 아래를 실행합니다. 같은 이름의 기존 파일을 덮어쓰므로 기존 폴더를 먼저 tar로 백업하고, 풀어 놓은 파일의 소유자를 Airflow 실행 계정(UID 50000, GID 0)으로 맞춥니다.
+2. [변경] `$HOME/airflow-odbc.tar`를 `khinfow01`의 `/tmp/node-exec/airflow-odbc.tar`로 옮긴 뒤 `khinfow01`에서 아래를 실행합니다. 묶음에 비밀번호 같은 비밀값이 없고 64KiB 이하이면 아래 블록을 실행하는 명령에 `--copy "$HOME/airflow-odbc.tar":/tmp/node-exec/airflow-odbc.tar`를 함께 지정하고, 그렇지 않으면 [파일 반입](../../shared/docs/infrastructure/access.md#파일-반입) 절의 방법으로 옮깁니다. 같은 이름의 기존 파일을 덮어쓰므로 기존 폴더를 먼저 tar로 백업하고, 풀어 놓은 파일의 소유자를 Airflow 실행 계정(UID 50000, GID 0)으로 맞춥니다.
 
    ```bash
    backup="/appdata/airflow/odbc-backup-$(date +%Y%m%d-%H%M%S).tar"
    sudo -n install -d -o 50000 -g 0 -m 0750 /appdata/airflow/odbc
    sudo -n install -o root -g root -m 0600 /dev/null "$backup"
    sudo -n tar -C /appdata/airflow -cf "$backup" odbc
-   sudo -n tar -C /appdata/airflow/odbc -xf /tmp/airflow-odbc.tar
+   sudo -n tar -C /appdata/airflow/odbc -xf /tmp/node-exec/airflow-odbc.tar
    sudo -n chown -R 50000:0 /appdata/airflow/odbc
-   rm /tmp/airflow-odbc.tar
+   rm /tmp/node-exec/airflow-odbc.tar
    ```
 
    복사가 끝나면 관리 호스트의 `$HOME/airflow-odbc.tar`도 지웁니다.

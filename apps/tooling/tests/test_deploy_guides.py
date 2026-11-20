@@ -162,6 +162,22 @@ class DeployGuideTests(unittest.TestCase):
                 found = INTERACTIVE.search(block)
                 self.assertIsNone(found, f'{path.relative_to(ROOT)}:{number}: 대화형 명령 또는 셸 상태 의존 `{found[0].strip() if found else ""}`')
 
+    def test_node_steps_do_not_use_ssh(self):
+        # 사내 서버는 노드 사이의 SSH를 쓸 수 없다. 노드 명령은 node_exec.py로 실행한다.
+        remote = re.compile(r'(^|[\s;(|&])(ssh|scp|sftp|rsync)\s')
+        for path in procedure_files():
+            for number, _, block, _ in bash_blocks(path):
+                found = remote.search(block)
+                self.assertIsNone(found, f'{path.relative_to(ROOT)}:{number}: SSH에 의존하는 명령 `{found[0].strip() if found else ""}`')
+        access = ACCESS.read_text()
+        for heading in ('## 노드 명령 실행', '## 가입 전 노드'):
+            self.assertIn('\n' + heading + '\n', access)
+        self.assertIn('deploy/shared/scripts/node_exec.py', access)
+        self.assertTrue((ROOT / 'deploy/shared/scripts/node_exec.py').is_file())
+        definition = AGENT.read_text()
+        self.assertIn('node_exec.py', definition)
+        self.assertIn('SSH는 쓸 수 없다', definition)
+
     def test_off_cluster_steps_point_to_the_access_table(self):
         for path in procedure_files():
             if path == ACCESS:

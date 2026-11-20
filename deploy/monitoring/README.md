@@ -39,10 +39,10 @@ Prometheus·Grafana·Alertmanager(`kube-prometheus-stack`)를 설치·운영하�
 | chart 파일 `deploy/monitoring/helm/vendor/kube-prometheus-stack-91.4.0.tgz`. 자동: 없으면 사내 미러에서 받음. 미러에서 받지 못하면 [파일 반입](../shared/docs/infrastructure/access.md#파일-반입)으로 둠([방법](docs/01-prepare.md#고정-chart-준비)) | `make ops-preflight APP=monitoring KUBE_CONTEXT="<context>"`의 `chart` 줄이 `[통과]` 또는 `[자동 준비]` |
 | 세 host를 SAN에 가진 `fullchain.crt`·`private.key`를 `deploy/shared/certs/etch.samsungds.net/`에 배치([인증서 발급](../shared/docs/infrastructure/access.md#인증서-발급)). 자동: 공용 TLS 등록 | `make ops-preflight APP=monitoring KUBE_CONTEXT="<context>"`의 `공용 TLS <host>` 세 줄이 `[통과]` 또는 `[자동 준비]` |
 | DNS 세 host → APP VIP 등록. 없어도 배포는 진행하며 smoke가 `DNS 미등록`으로 표시 | `getent hosts grafana.etch.samsungds.net prometheus.etch.samsungds.net alert.etch.samsungds.net`. 빠진 host가 있으면 [DNS](../shared/docs/infrastructure/access.md#dns) |
-| 실행 노드가 필요한 이미지를 사내 미러에서 받을 수 있음. 미러에 없는 이미지는 [파일 반입](../shared/docs/infrastructure/access.md#파일-반입)([이미지 목록](docs/01-prepare.md#이미지-목록-확인)) | [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 실행 노드에서 `sudo -n crictl pull <images.txt의 이미지>` |
-| `khinfow01`의 데이터 디스크가 마운트되어 있고 여유 공간이 있음 | [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 `khinfow01`에서 [디스크 확인](docs/01-prepare.md#저장소와-폴더) |
+| 실행 노드가 필요한 이미지를 사내 미러에서 받을 수 있음. 미러에 없는 이미지는 [파일 반입](../shared/docs/infrastructure/access.md#파일-반입)([이미지 목록](docs/01-prepare.md#이미지-목록-확인)) | [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n crictl pull <images.txt의 이미지>'`를 실행 노드마다 실행 |
+| `khinfow01`의 데이터 디스크가 마운트되어 있고 여유 공간이 있음 | [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py khinfow01 --context "<context>" --command 'df -h /appdata'`. 기준은 [디스크 확인](docs/01-prepare.md#저장소와-폴더) |
 | 새 설치일 때 기존 Prometheus Operator가 없음 | `kubectl --context "<context>" get crd prometheuses.monitoring.coreos.com --ignore-not-found`의 출력이 없음 |
-| 각 노드의 호스트 포트 9100을 다른 node-exporter가 쓰지 않음 | [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 각 노드에서 `sudo -n ss -lntp '( sport = :9100 )'`의 출력에 LISTEN 줄이 없음 |
+| 각 노드의 호스트 포트 9100을 다른 node-exporter가 쓰지 않음 | [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n ss -lntp "( sport = :9100 )"'`를 노드마다 실행한 출력에 LISTEN 줄이 없음 |
 
 ## 입력
 
@@ -122,7 +122,7 @@ make monitoring-smoke KUBE_CONTEXT="<context>"
 | `Helm chart 준비 필요`, `chart SHA-256 불일치` | [변경] `make monitoring-fetch-chart`. 다시 실패하면 [chart 준비](docs/01-prepare.md#고정-chart-준비). 다른 버전의 chart로 바꾸지 않음 |
 | `Secret monitoring-grafana-admin이 없습니다` | `MONITORING_GRAFANA_ENV`가 가리키는 [계정 파일](docs/01-prepare.md#grafana-관리자-계정)이 없거나 형식이 다름. 파일을 준비해 같은 명령에 `MONITORING_GRAFANA_ENV=<경로>`를 붙임 |
 | `공용 TLS 마운트가 없습니다` | [변경] `make ops-deploy APP=ingress KUBE_CONTEXT="<context>"` 뒤 다시 실행 |
-| `ImagePullBackOff`·`ErrImagePull` | 실패한 이미지를 [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 그 노드에서 `sudo -n crictl pull <이미지>`로 확인. 미러에 없으면 [파일 반입](../shared/docs/infrastructure/access.md#파일-반입) |
+| `ImagePullBackOff`·`ErrImagePull` | 실패한 이미지를 [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n crictl pull <이미지>'`로 확인. 미러에 없으면 [파일 반입](../shared/docs/infrastructure/access.md#파일-반입) |
 | `monitoring-storage-prepare-*` Job 실패 | [Job 로그](docs/02-operations.md#문제-해결)를 조회. root·hostPath 허용과 디스크 마운트를 확인 |
 | smoke `DNS 조회 실패, APP VIP 직접 접속도 실패` | 서비스가 Ingress를 거쳐 응답하지 않음. Pod와 Ingress를 조회하고 [장애 조회](../README.md#장애-조회)의 404 / 503 행을 따름 |
 

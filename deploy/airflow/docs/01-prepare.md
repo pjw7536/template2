@@ -52,7 +52,7 @@ Airflow Pod·내부 DB·local PV가 이 노드에 묶이므로 자원·디스크
 최초 설치에서 DAG 폴더가 비어 있으면 이미지의 DAG와 준비 표식(`.airflow-dags-initialized`)을 복사합니다. 이미 설치된 환경의 DAG 폴더는 [공유 폴더 전환](04-operations.md#공유-폴더-전환)으로 준비합니다.
 ODBC 폴더의 실제 설정 파일은 [ODBC 파일 안내](../odbc/README.md#worker에-반영)로 배치합니다.
 
-아래 명령은 `airflow-up`을 거치지 않고 폴더를 직접 준비하거나 디스크 여유·권한을 확인할 때만 씁니다. 실행 위치는 **`NODE_NAME`으로 선택한 Worker**(`khinfow01`)이며 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+아래 명령은 `airflow-up`을 거치지 않고 폴더를 직접 준비하거나 디스크 여유·권한을 확인할 때만 씁니다. 실행 위치는 **`NODE_NAME`으로 선택한 Worker**(`khinfow01`)이며, 블록을 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다.
 경로와 UID/GID는 현재 env 선언 기준이며 실제 env와 일치시킵니다. `POSTGRES_MODE=external`이면 PostgreSQL 경로를 제외합니다.
 
 [변경] 없는 폴더를 만듭니다. 이미 있는 폴더는 소유자와 권한만 아래 값으로 맞춰지므로, 데이터가 든 기존 폴더에는 실행하지 않습니다.

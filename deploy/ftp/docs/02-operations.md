@@ -3,7 +3,7 @@
 [FTP 가이드](../README.md) · [설치 준비와 별도 overlay 배포](01-install.md)
 
 설치·업데이트 절차는 [FTP 가이드](../README.md)에 있습니다. 이 문서는 접속 확인과 그 밖의 운영 작업입니다.
-kubectl·make 명령은 관리 호스트의 저장소 루트에서 실행하고 `<context>`에는 대상 Kubernetes context를 넣습니다. 별도 계정 파일·env를 쓰면 [가이드의 입력](../README.md#입력)대로 `FTP_CREDENTIAL_FILE`·`FTP_ENV`를 명령에 붙입니다. 노드에서 실행하는 명령은 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh) 절의 방법으로 실행합니다.
+kubectl·make 명령은 관리 호스트의 저장소 루트에서 실행하고 `<context>`에는 대상 Kubernetes context를 넣습니다. 별도 계정 파일·env를 쓰면 [가이드의 입력](../README.md#입력)대로 `FTP_CREDENTIAL_FILE`·`FTP_ENV`를 명령에 붙입니다. 노드에서 실행하는 명령은 관리 호스트에서 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행) 절의 도구로 전달합니다.
 
 - [1. Pod가 뜬 서버 확인](#1-pod가-뜬-서버-확인)
 - [2. 업로드·다운로드 확인](#2-업로드다운로드-확인)
@@ -50,11 +50,11 @@ kubectl --context "<context>" -n etch-ftp get daemonset ftp
    cmp /tmp/ftp-test-<노드>.txt /tmp/ftp-test-<노드>.down && echo 'FTP 업로드·다운로드 확인 완료'
    ```
    성공: `FTP 업로드·다운로드 확인 완료`. 로그인 오류면 계정 파일이 Secret과 같은지, 시간 초과면 passive 포트 8076–8079까지의 경로를 [6. 문제 해결](#6-문제-해결)로 확인합니다.
-2. [조회] **접속한 노드에서** 파일이 생겼는지 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)로 확인합니다.
+2. [조회] **접속한 노드에서** 파일이 생겼는지 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)으로 확인합니다.
    ```bash
-   ssh <계정>@<노드> 'ls -l /appdata/data_movement/ftp-test-<노드>.txt'
+   python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'ls -l /appdata/data_movement/ftp-test-<노드>.txt'
    ```
-   성공: 파일이 조회됩니다. 다른 FTP 노드도 해당 IP로 1~2를 반복하고, 다른 노드의 저장 폴더에는 이 파일이 없는 것도 같은 명령으로 확인합니다(`No such file`).
+   성공: 파일이 조회됩니다. 다른 FTP 노드도 해당 IP로 1~2를 반복하고, 다른 노드의 저장 폴더에는 이 파일이 없는 것도 같은 명령으로 확인합니다(`No such file`과 `노드 명령 실패`).
 3. [변경] 시험 파일을 같은 계정의 FTP 삭제로 지우고 남은 목록을 조회합니다.
    ```bash
    curl --fail --silent --show-error --connect-timeout 5 --max-time 30 --list-only \
@@ -137,7 +137,7 @@ kubectl --context "<context>" -n etch-ftp logs <FTP Pod 이름> --tail=100
 | Pod가 없음 | 대상 노드의 FTP 라벨·Linux 라벨 |
 | Control plane 선택 거부 | 사용 중인 `FTP_ENV`의 `FTP_ALLOW_CONTROL_PLANE=true` 확인. 역할 NoSchedule 외 taint·cordon·NotReady는 별도 해결 필요 |
 | Pending / FailedMount | 노드 상태·taint, 디스크·경로 생성 권한, `/appdata/data_movement`가 파일로 점유됐는지, namespace 정책 |
-| ImagePullBackOff | `FTP_ENV`(기본 `env/prod.env`)의 `FTP_IMAGE`가 사내 미러 주소인지, 해당 digest 제공 여부·Worker의 CA·registry 접근·`IMAGE_PULL_SECRET` 확인. Worker에서의 확인은 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)로 `sudo -n crictl pull <FTP_IMAGE 값>`. 다른 이미지 주소가 필요하면 저장소 밖 env 사본에서 바꾼 뒤 같은 `FTP_ENV`로 [가이드 B](../README.md#b-업데이트)의 배포 명령 실행 |
+| ImagePullBackOff | `FTP_ENV`(기본 `env/prod.env`)의 `FTP_IMAGE`가 사내 미러 주소인지, 해당 digest 제공 여부·Worker의 CA·registry 접근·`IMAGE_PULL_SECRET` 확인. Worker에서의 확인은 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n crictl pull <FTP_IMAGE 값>'`. 다른 이미지 주소가 필요하면 저장소 밖 env 사본에서 바꾼 뒤 같은 `FTP_ENV`로 [가이드 B](../README.md#b-업데이트)의 배포 명령 실행 |
 | 시작 실패 | 기존 6380 포트 점유, 계정 형식, 폴더 권한. 포트는 [저장 폴더와 포트 확인](01-install.md#3-각-노드의-저장-폴더와-포트-확인)의 명령으로 조회 |
 | 연결 시간 초과 | 접속 IP·6380 방화벽·노드 네트워크. [방화벽](../../shared/docs/infrastructure/access.md#방화벽) 절의 `찾는 방법`으로 출발지에서 확인 |
 | 로그인은 되지만 목록·전송 실패 | passive 포트 8076–8079 방화벽([방화벽](../../shared/docs/infrastructure/access.md#방화벽)), InternalIP 직접 접근, 파일 권한 |

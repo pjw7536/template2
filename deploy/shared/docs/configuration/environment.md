@@ -26,8 +26,7 @@ deploy/
 │   └── build.env                  # 이미지 빌드
 ├── monitoring/env/
 │   ├── k8s.env                    # Kubernetes 배포
-│   ├── grafana-initial.env        # 관리자 Secret이 없을 때만 쓰는 초기 계정
-│   └── grafana-admin.env.example  # Git 밖 관리자 env 예제
+│   └── grafana-initial.env        # 관리자 Secret이 없을 때만 쓰는 초기 계정
 ├── headlamp/env/k8s.env           # 공개 설정·Secret 이름
 ├── ftp/env/
 │   ├── prod.env                   # 이미지·배치 설정

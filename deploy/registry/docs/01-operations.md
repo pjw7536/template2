@@ -3,7 +3,7 @@
 [Registry 가이드](../README.md)
 
 설치·업데이트 절차는 [Registry 가이드](../README.md)에 있습니다. 이 문서는 노드의 CA 준비, push·pull 검증, 이미지·계정 관리 방법을 다룹니다.
-명령은 따로 적지 않으면 관리 호스트의 저장소 루트에서 실행합니다. 노드에서 실행하는 명령은 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행하며, 노드 이름은 `kubectl --context "<context>" get nodes`의 `NAME`입니다. registry Worker(`NODE_NAME`, 저장소 선언 `khplanew01`)는 관리 호스트와 같은 서버입니다.
+명령은 따로 적지 않으면 관리 호스트의 저장소 루트에서 실행합니다. 노드에서 실행하는 블록은 관리 호스트에서 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)으로 전달합니다. 한 줄 블록은 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command '<블록의 명령>'`, 여러 줄 블록은 저장소 밖 파일에 저장해 `--script <블록 파일>`로 전달하며, `<노드>`는 `kubectl --context "<context>" get nodes`의 `NAME`입니다. registry Worker(`NODE_NAME`, 저장소 선언 `khplanew01`)는 관리 호스트와 같은 서버입니다.
 
 - [노드와 관리 호스트의 CA 신뢰](#노드와-관리-호스트의-ca-신뢰)
 - [수동 push·pull 시험](#수동-pushpull-시험)
@@ -28,7 +28,7 @@ curl -sS -o /dev/null -D - https://store.etch.samsungds.net/v2/
 - `Could not resolve host`: 그 호스트에서 이름이 조회되지 않습니다. [DNS](../../shared/docs/infrastructure/access.md#dns) 절로 등록합니다.
 - `SSL certificate problem`: 신뢰 오류입니다. 아래 등록을 수행합니다.
 
-[변경] 신뢰 오류가 난 호스트에 사내 Root CA를 등록합니다. CA 파일과 등록 명령은 [Ubuntu 서버·클라이언트 CA 등록](../../shared/docs/certificates/apply.md#ubuntu-서버클라이언트)에 있습니다. 관리 호스트는 [관리 호스트 sudo](../../shared/docs/infrastructure/access.md#관리-호스트-sudo), 노드는 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행하고 CA 파일은 같은 절의 파일 전송 방법으로 노드에 옮깁니다. 등록 뒤 위 [조회]를 그 호스트에서 다시 실행해 `200` 또는 `401`을 확인합니다.
+[변경] 신뢰 오류가 난 호스트에 사내 Root CA를 등록합니다. CA 파일과 등록 명령은 [Ubuntu 서버·클라이언트 CA 등록](../../shared/docs/certificates/apply.md#ubuntu-서버클라이언트)에 있습니다. 관리 호스트는 [관리 호스트 sudo](../../shared/docs/infrastructure/access.md#관리-호스트-sudo), 노드는 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 실행하고 CA 파일은 같은 명령의 `--copy`로 노드에 보냅니다. 등록 뒤 위 [조회]를 그 호스트에서 다시 실행해 `200` 또는 `401`을 확인합니다.
 
 `curl`은 성공하고 `crictl pull`만 `x509` 오류가 나면 containerd 쪽을 확인합니다.
 
@@ -38,9 +38,9 @@ curl -sS -o /dev/null -D - https://store.etch.samsungds.net/v2/
 sudo -n ls /etc/containerd/certs.d/store.etch.samsungds.net
 ```
 
-`No such file or directory`면 전용 설정이 없고 시스템 신뢰 목록을 쓰는 것입니다. 폴더가 있으면 그 안 `hosts.toml`의 `server`와 CA 지정이 이 저장소와 맞는지 확인합니다.
+`No such file or directory`면 전용 설정이 없고 시스템 신뢰 목록을 쓰는 것입니다(이때 마지막 줄은 `노드 명령 실패: <노드>`입니다). 폴더가 있으면 그 안 `hosts.toml`의 `server`와 CA 지정이 이 저장소와 맞는지 확인합니다.
 
-[승인] CA를 새로 등록한 노드에서 containerd가 등록 전의 신뢰 목록을 쓰고 있으면 containerd를 다시 시작합니다. 대상 노드와 영향을 보여 주고 승인받은 뒤 한 번에 한 대씩 그 노드에서 실행합니다.
+[승인] CA를 새로 등록한 노드에서 containerd가 등록 전의 신뢰 목록을 쓰고 있으면 containerd를 다시 시작합니다. 대상 노드와 영향을 보여 주고 승인받은 뒤 한 번에 한 대씩 그 노드에서 실행합니다. 블록은 `--script`로 전달합니다.
 
 ```bash
 sudo -n systemctl restart containerd

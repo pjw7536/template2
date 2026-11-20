@@ -3,7 +3,7 @@
 [Airflow 가이드](../README.md)
 
 설치·업데이트 절차는 [Airflow 가이드](../README.md)에 있습니다. 이 문서는 설치 후의 백업·Secret 복원·DB 이전·DAG 관리·이미지 업데이트 준비·장애 확인·부하 테스트입니다.
-명령은 관리 호스트 저장소 루트에서 실행합니다. 다른 서버에서 하는 작업은 절에 실행 위치를 표시하며 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+명령은 관리 호스트 저장소 루트에서 실행합니다. 다른 노드에서 하는 작업은 절에 실행 위치를 표시합니다. 그 블록은 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다.
 DB 명령은 `POSTGRES_MODE=internal`, namespace·DB·사용자 `airflow` 기준입니다. 외부 DB는 해당 DB 운영 절차로 백업·복원하고 내부 StatefulSet 명령을 사용하지 않습니다.
 
 - [1. DB와 설정 백업](#1-db와-설정-백업)
@@ -78,7 +78,7 @@ make airflow-check KUBE_CONTEXT="<context>"
 ## 3. 기존 Compose DB 이전
 
 이 절은 DB 이전이 별도로 결정된 환경에만 적용하며 신규 설치에는 사용하지 않습니다.
-[승인] 데이터 이전입니다. 대상 DB·순서·영향을 보여 주고 승인받은 뒤 진행합니다. 1·2번은 기존 Compose 서버에서 실행하며 접속은 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)와 같은 방법을 씁니다.
+[승인] 데이터 이전입니다. 대상 DB·순서·영향을 보여 주고 승인받은 뒤 진행합니다. 1·2번은 기존 Compose 서버에서 실행합니다. 이 서버는 클러스터 노드가 아니어서 관리 호스트에서 닿지 않으므로 [가입 전 노드](../../shared/docs/infrastructure/access.md#가입-전-노드) 절과 같이 실행할 내용을 전달하고 결과를 받습니다.
 
 1. 기존 DAG를 일시정지하고 실행 중인 작업을 종료·완료시킨 후 기존 scheduler/webserver를 중지합니다.
 2. 기존 PostgreSQL 16에서 `pg_dump -Fc`로 백업하고 기존 Fernet 키·Connection·Variable을 확인합니다.
@@ -97,7 +97,7 @@ Airflow는 워커의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/a
 
 **최초 설치(실행 중인 Airflow 없음):** `airflow-up`이 `NODE_NAME` 워커(`khinfow01`)의 폴더를 만들고, 폴더가 비어 있으면 이미지의 `/opt/airflow/dags`와 준비 표식을 복사합니다. 이미지의 `/opt/airflow/dags`는 빌드한 commit의 `apps/airflow/dags`를 그대로 복사한 것입니다. 폴더에 파일이나 준비 표식이 이미 있으면 바꾸지 않습니다.
 
-**기존 설치에서 전환:** `airflow-scheduler`가 이미 배포된 환경에는 `airflow-up`이 DAG를 복사하지 않으므로 아래 순서로 준비합니다. 2·3번은 `NODE_NAME` 워커(`khinfow01`)에서 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다. 공유 폴더를 처음 연결하기 전에 기존 DAG를 [일시정지](#dag-목록-확인과-활성화)하고 실행 중인 작업을 완료한 뒤 [DB를 백업](#1-db와-설정-백업)합니다.
+**기존 설치에서 전환:** `airflow-scheduler`가 이미 배포된 환경에는 `airflow-up`이 DAG를 복사하지 않으므로 아래 순서로 준비합니다. 2·3번의 블록은 `NODE_NAME` 워커(`khinfow01`)에서 실행하며 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다. 공유 폴더를 처음 연결하기 전에 기존 DAG를 [일시정지](#dag-목록-확인과-활성화)하고 실행 중인 작업을 완료한 뒤 [DB를 백업](#1-db와-설정-백업)합니다.
 
 1. [변경] 관리 호스트에서 현재 DAG Processor의 파일을 백업합니다. 클러스터는 바꾸지 않고 백업 파일을 만듭니다. 마지막 줄에 나온 파일 경로를 보고에 남깁니다.
 
@@ -117,7 +117,7 @@ Airflow는 워커의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/a
    )
    ```
 
-2. [변경] 1번에서 만든 tar를 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 파일 전송 형식으로 `khinfow01`에 복사합니다. 이어서 `khinfow01`에서 tar의 실제 경로를 넣어 아래를 실행합니다. 대상 디렉터리에 파일이 이미 있으면 우선 보존합니다. 전환과 함께 업데이트할 DAG 파일은 **준비 표식을 만들기 전에** [DAG 파일 추가·수정·삭제](#dag-파일-추가수정삭제)의 방법으로 필요한 버전을 복사합니다.
+2. [변경] 1번에서 만든 tar를 `khinfow01`의 `/tmp/node-exec/airflow-dags.tar`로 옮깁니다. tar가 64KiB 이하이면 아래 블록을 실행하는 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행) 명령에 `--copy <1번의 tar 경로>:/tmp/node-exec/airflow-dags.tar`를 함께 지정하고, 더 크면 [파일 반입](../../shared/docs/infrastructure/access.md#파일-반입) 절의 방법으로 옮깁니다. 이어서 `khinfow01`에서 tar의 실제 경로를 넣어 아래를 실행합니다. 대상 디렉터리에 파일이 이미 있으면 우선 보존합니다. 전환과 함께 업데이트할 DAG 파일은 **준비 표식을 만들기 전에** [DAG 파일 추가·수정·삭제](#dag-파일-추가수정삭제)의 방법으로 필요한 버전을 복사합니다.
 
    ```bash
    sudo -n install -d -o root -g root -m 0755 /appdata/airflow/dags
@@ -147,12 +147,12 @@ Airflow는 워커의 `DAGS_HOST_PATH`를 `airflow-dags` PVC로 공유해 `/opt/a
 
 ### DAG 파일 추가·수정·삭제
 
-워커(`khinfow01`)의 `DAGS_HOST_PATH`(현재 `/appdata/airflow/dags`)에서 파일을 관리합니다. 폴더 소유자는 `root:root`·`0755`이므로 쓰기는 sudo로 합니다. 재배포는 필요 없으며 Airflow가 다음 스캔에서 반영합니다. 아래 명령은 `khinfow01`에서 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+워커(`khinfow01`)의 `DAGS_HOST_PATH`(현재 `/appdata/airflow/dags`)에서 파일을 관리합니다. 폴더 소유자는 `root:root`·`0755`이므로 쓰기는 sudo로 합니다. 재배포는 필요 없으며 Airflow가 다음 스캔에서 반영합니다. 아래 블록은 `khinfow01`에서 실행하며 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다.
 
-1. [변경] 추가·수정. 관리 호스트 checkout의 `apps/airflow/dags/<파일>.py`를 노드 SSH의 파일 전송 형식으로 `khinfow01`의 `/tmp/<파일>.py`에 복사합니다. 이어서 같은 디렉터리의 `.tmp` 파일에 복사한 뒤 최종 `.py` 이름으로 이동합니다. Airflow가 쓰는 도중의 파일을 읽지 않게 하는 순서입니다.
+1. [변경] 추가·수정. 관리 호스트 checkout의 `apps/airflow/dags/<파일>.py`를 `khinfow01`의 `/tmp/node-exec/<파일>.py`로 보낸 뒤, 같은 디렉터리의 `.tmp` 파일에 복사하고 최종 `.py` 이름으로 이동합니다. Airflow가 쓰는 도중의 파일을 읽지 않게 하는 순서입니다. 아래 블록을 저장한 파일로 `python3 deploy/shared/scripts/node_exec.py khinfow01 --context "<context>" --copy apps/airflow/dags/<파일>.py:/tmp/node-exec/<파일>.py --script <블록 파일>`을 실행합니다.
 
    ```bash
-   sudo -n install -o root -g root -m 0644 /tmp/<파일>.py /appdata/airflow/dags/<파일>.py.tmp
+   sudo -n install -o root -g root -m 0644 /tmp/node-exec/<파일>.py /appdata/airflow/dags/<파일>.py.tmp
    sudo -n mv /appdata/airflow/dags/<파일>.py.tmp /appdata/airflow/dags/<파일>.py
    ls -l /appdata/airflow/dags/<파일>.py
    ```
@@ -239,7 +239,7 @@ kubectl --context "<context>" -n airflow logs statefulset/airflow-postgres --tai
 | 실제 값으로 교체·필수값 오류 | 오류에 표시된 env 키 | [환경설정](01-prepare.md#환경설정)의 뜻에 맞는 값을 [운영 입력 파일](../../shared/docs/infrastructure/access.md#운영-입력-파일)의 env에 채운 뒤 check 재실행 |
 | 기존 비밀값과 불일치·Secret 없음 | 기존 DB 비밀번호·Fernet 키와 사용 중인 env | [Secret 복원](#2-secret-복원). init-secrets 재실행으로 해결하지 않음 |
 | OIDC CA ConfigMap과 CA 묶음 파일이 모두 없음 | `AIRFLOW_OIDC_CA_CONFIGMAP`, `AIRFLOW_OIDC_CA_FILE` | [사내 CA 묶음](../../README.md#사내-ca-묶음)을 만들거나 CA 파일 경로 지정. [OIDC CA ConfigMap](03-deploy.md#oidc-ca-configmap) |
-| Pending·PVC 미연결 | Worker Ready·hostname label·PV nodeAffinity·디스크 경로 | [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)로 지정 노드의 [폴더·권한](01-prepare.md#worker-폴더-직접-준비)을 조회. PV·PVC를 지우거나 다시 만들지 않음 |
+| Pending·PVC 미연결 | Worker Ready·hostname label·PV nodeAffinity·디스크 경로 | [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)으로 지정 노드의 [폴더·권한](01-prepare.md#worker-폴더-직접-준비)을 조회. PV·PVC를 지우거나 다시 만들지 않음 |
 | ImagePullBackOff | repository:tag·registry 접근·노드의 저장소 인증서 신뢰·imagePullSecret | 노드의 [CA 신뢰](../../registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰) 확인. registry를 쓰지 않으면 [이미지 전달](02-artifacts.md#이미지-전달)로 Worker의 이미지 접근 복구 |
 | ODBC mount 실패 | 호스트 디렉터리·Secret 존재 | [ODBC 파일 안내](../odbc/README.md#worker에-반영)로 실제 DSN·인증서 전체와 읽기 권한 준비 |
 | migration·관리자 Job 실패 | 아래 Job 로그 | 멈추고 Job 로그와 함께 보고. DB/PVC 삭제 금지 |
@@ -279,7 +279,7 @@ kubectl --context "<context>" -n airflow logs "job/<확인할 Job 이름>" --all
    kubectl --context "<context>" describe nodes khinfow01 khplanew01
    ```
 
-2. [변경] 사내 이미지 저장소를 쓰지 않는 에어갭 배포라면 스케줄러의 Airflow 이미지 태그를 두 워커 모두의 containerd에 반입합니다. 방법은 [이미지 전달](02-artifacts.md#registry-없이-전달하는-경우)이며 각 워커에서 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다. 이미지 pull Secret을 사용하는 환경은 같은 이름의 Secret을 테스트 namespace에도 준비합니다.
+2. [변경] 사내 이미지 저장소를 쓰지 않는 에어갭 배포라면 스케줄러의 Airflow 이미지 태그를 두 워커 모두의 containerd에 반입합니다. 방법은 [이미지 전달](02-artifacts.md#registry-없이-전달하는-경우)이며 관리 호스트가 아닌 워커의 블록은 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다. 이미지 pull Secret을 사용하는 환경은 같은 이름의 Secret을 테스트 namespace에도 준비합니다.
 3. [변경] 관리 호스트에서 테스트 전용 namespace와 권한을 적용합니다. 아래 manifest는 `airflow` namespace의 `airflow-scheduler` 서비스 계정을 사용합니다.
 
    ```bash

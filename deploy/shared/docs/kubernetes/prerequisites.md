@@ -3,7 +3,8 @@
 [가이드 홈](../README.md#클러스터) · [CP1~3 셋업](control-plane.md) · [Worker 추가](worker.md)
 
 **목적:** OS가 설치된 새 노드의 공통 준비 조건·통신·배포 도구를 확인합니다. 현재 Ready 노드는 재설정하지 않습니다.
-**준비물:** 확정된 OS·Kubernetes·런타임 버전([서버 현황](../infrastructure/servers.md#확인된-worker-설치-기준)), 새 노드의 주소·네트워크·스토리지 정보([서버 목록](../infrastructure/servers.md#서버-목록), [네트워크](../infrastructure/network.md)), 새 노드의 SSH 접속과 sudo([노드 SSH](../infrastructure/access.md#노드-ssh)).
+**준비물:** 확정된 OS·Kubernetes·런타임 버전([서버 현황](../infrastructure/servers.md#확인된-worker-설치-기준)), 새 노드의 주소·네트워크·스토리지 정보([서버 목록](../infrastructure/servers.md#서버-목록), [네트워크](../infrastructure/network.md)), 새 노드에서 명령을 실행할 방법([가입 전 노드](../infrastructure/access.md#가입-전-노드)).
+**실행 위치:** 1단계의 명령은 아직 클러스터에 가입하지 않은 새 노드에서 실행하며, 이 서버는 관리 호스트에서 닿지 않습니다. [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 명령 블록을 문서 순서대로 사용자에게 전달해 실행 결과를 받고, 가입한 뒤 `kubectl --context "<context>" get node <노드>`의 `Ready` 확인부터 이어서 진행합니다. 3단계는 관리 호스트에서 실행합니다.
 
 - 확인된 설치 기준은 [서버 현황](../infrastructure/servers.md#확인된-worker-설치-기준)에 있습니다.
 - Ubuntu 22.04.2 LTS amd64·Kubernetes 1.36.0·containerd 2.2.1의 설치 명령은 [Worker 추가](worker.md#2-빈-서버에-프로그램-설치설정--새-worker)에 있습니다.
@@ -11,7 +12,7 @@
 
 ## 1. 노드 준비 — 각 새 노드
 
-[변경] 아직 클러스터에 가입하지 않은 새 노드마다 다음을 갖춥니다. 실행 위치는 새 노드이며 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다. 이미 서비스 중인 노드에는 수행하지 않습니다.
+[변경] 아직 클러스터에 가입하지 않은 새 노드마다 다음을 갖춥니다. 실행 위치는 새 노드이며 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 수행합니다. 이미 서비스 중인 노드에는 수행하지 않습니다.
 
 1. 중복 없는 hostname·고정 IP, 라우팅·DNS·시간 동기화를 준비합니다.
 2. OS·앱 데이터 디스크의 용량·권한·재부팅 후 마운트를 확인합니다.

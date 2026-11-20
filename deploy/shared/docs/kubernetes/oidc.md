@@ -10,9 +10,9 @@ Keycloak은 사용자를 인증하고 API server는 그 토큰을 신뢰할지 �
 - 앱이 정한 인증 계약: issuer, audience(client ID), username·groups claim과 prefix, 서명 알고리즘. 현재 사용 앱인 Headlamp의 계약은 [Headlamp 인증](../../../headlamp/docs/02-authentication.md)에 있고, 3단계의 프로그램에 그 값이 들어 있습니다.
 - 운영 issuer: Headlamp env의 `HEADLAMP_OIDC_ISSUER_URL`. 1단계의 `make -s headlamp-setup-env` 출력에서 읽으며 [서비스 원본](../infrastructure/services.md)의 업무 realm OIDC issuer와 같아야 합니다.
 - 사내 CA 묶음 PEM 한 파일: 관리 호스트의 `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`. 없으면 [사내 CA 묶음](../../../README.md#사내-ca-묶음)의 명령으로 만듭니다. PFX·사이트 개인키는 제어면으로 옮기지 않습니다.
-- 각 제어면의 SSH 접속과 비밀번호 없는 sudo. 확인 방법은 [노드 SSH](../infrastructure/access.md#노드-ssh)에 있습니다.
+- 각 제어면에서의 노드 명령 실행. [노드 명령 실행](../infrastructure/access.md#노드-명령-실행) 절의 `찾는 방법`대로 `python3 deploy/shared/scripts/node_exec.py <제어면> --context "<context>" --command 'hostname; id -u'`가 제어면 이름과 `0`을 출력해야 합니다.
 
-**실행 위치:** 단계마다 적습니다. `kubectl`·`make` 블록은 관리 호스트의 저장소 루트에서 실행합니다. `/etc/kubernetes` 파일을 다루는 블록은 대상 제어면에서 실행하는 명령이며 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 블록 전체를 그 제어면의 셸에 전달합니다. 블록마다 새 셸입니다.
+**실행 위치:** 단계마다 적습니다. `kubectl`·`make` 블록은 관리 호스트의 저장소 루트에서 실행합니다. `/etc/kubernetes` 파일을 다루는 블록은 대상 제어면에서 실행하는 명령입니다. 블록 전체를 관리 호스트의 저장소 밖 파일에 그대로 저장한 뒤 관리 호스트의 저장소 루트에서 `python3 deploy/shared/scripts/node_exec.py <제어면> --context "<context>" --script <블록 파일>`로 전달하며([노드 명령 실행](../infrastructure/access.md#노드-명령-실행)), 출력의 마지막 줄이 `노드 명령 완료: <제어면>`이면 블록이 끝까지 실행된 것입니다. 블록마다 새 셸입니다.
 
 **자리표시:** `<제어면>`은 1단계에서 조회한 제어면 노드 이름 하나, `<issuer>`는 운영 issuer, `<백업 파일>`은 3단계 프로그램이 출력한 `백업 파일:` 경로입니다.
 
@@ -43,9 +43,10 @@ make -s headlamp-setup-env
 **기대 결과:** 둘째 명령의 `NODE` 열이 제어면 노드 이름(`<제어면>`)입니다. 셋째 명령은 인증 옵션마다 그 옵션을 가진 API server 수를 출력하며, 출력이 없으면 옵션이 없는 상태입니다. 마지막 명령의 `HEADLAMP_OIDC_ISSUER_URL` 값이 `<issuer>`이고 `HEADLAMP_OIDC_CLIENT_ID`는 `headlamp`입니다.
 `kubectl`이 실패하면 [Kubernetes API](../infrastructure/access.md#kubernetes-api) 절로 접속을 확인합니다. `HEADLAMP_OIDC_CLIENT_ID`가 `headlamp`가 아니면 3단계 프로그램의 `('--oidc-client-id', 'headlamp')` 줄에서 `headlamp`를 그 값으로 바꿔 실행합니다.
 
-[조회] 각 제어면에서 manifest와 형식을 확인합니다. 실행 위치는 `<제어면>`이며 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+[조회] 각 제어면에서 manifest와 형식을 확인합니다. 실행 위치는 `<제어면>`이며 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다. 첫 줄의 `set +e`는 둘째 명령이 일치하는 줄 없이 끝나도 셋째 명령까지 실행하게 합니다.
 
 ```bash
+set +e
 sudo test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'kubeadm manifest 있음'
 sudo grep -nE -- '--(oidc-|authentication-config)' /etc/kubernetes/manifests/kube-apiserver.yaml
 sudo grep -cE '^    - kube-apiserver$|^    volumeMounts:$|^  volumes:$' /etc/kubernetes/manifests/kube-apiserver.yaml
@@ -63,24 +64,24 @@ sudo grep -cE '^    - kube-apiserver$|^    volumeMounts:$|^  volumes:$' /etc/kub
 
 이 절차는 사내 CA로 서명된 issuer 기준입니다. 공인 CA를 쓰는 issuer에는 `--oidc-ca-file`과 CA 마운트가 필요 없고 3단계 프로그램은 그 구성을 만들지 않으므로, 그 경우에는 멈추고 보고합니다.
 
-1. [변경] 관리 호스트의 `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`을 [노드 SSH](../infrastructure/access.md#노드-ssh)의 파일 전송 방법으로 `<제어면>`의 `/tmp/keycloak-ca-bundle.pem`에 복사합니다. 관리 호스트의 파일과 환경변수는 다른 서버에 자동으로 전달되지 않습니다.
-2. [변경] `<제어면>`에서 API server가 읽을 위치에 설치하고 내용을 확인합니다.
+1. [변경] 관리 호스트의 `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`을 `<제어면>`의 `/tmp/node-exec/keycloak-ca-bundle.pem`으로 보냅니다. 2번의 명령에 `--copy`로 함께 지정하므로 따로 실행하지 않습니다. 관리 호스트의 파일과 환경변수는 다른 서버에 자동으로 전달되지 않습니다.
+2. [변경] `<제어면>`에서 API server가 읽을 위치에 설치하고 내용을 확인합니다. 아래 블록을 저장한 파일로 관리 호스트의 저장소 루트에서 `python3 deploy/shared/scripts/node_exec.py <제어면> --context "<context>" --copy deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem:/tmp/node-exec/keycloak-ca-bundle.pem --script <블록 파일>`을 실행합니다([노드 명령 실행](../infrastructure/access.md#노드-명령-실행)). 파일을 먼저 보낸 뒤 블록을 실행합니다.
    ```bash
    sudo install -d -m 0755 /etc/kubernetes/oidc
-   sudo install -m 0644 /tmp/keycloak-ca-bundle.pem /etc/kubernetes/oidc/keycloak-ca-bundle.pem
-   rm -f /tmp/keycloak-ca-bundle.pem
+   sudo install -m 0644 /tmp/node-exec/keycloak-ca-bundle.pem /etc/kubernetes/oidc/keycloak-ca-bundle.pem
+   rm -f /tmp/node-exec/keycloak-ca-bundle.pem
    openssl crl2pkcs7 -nocrl -certfile /etc/kubernetes/oidc/keycloak-ca-bundle.pem |
      openssl pkcs7 -print_certs -noout
    ```
 
-**기대 결과:** 사내 CA 구성에서는 루트·중간 CA의 `subject`와 `issuer`가 표시됩니다.
+**기대 결과:** 사내 CA 구성에서는 루트·중간 CA의 `subject`와 `issuer`가 표시되고 마지막 줄이 `노드 명령 완료: <제어면>`입니다.
 API server 컨테이너에도 이 파일이 보여야 하므로 3단계에서 `/etc/kubernetes/oidc`를 마운트합니다. 앱 namespace의 ConfigMap 등록만으로는 부족합니다.
 
 ## 3. oidc 옵션 반영 — kubeadm static Pod, 제어면 한 대
 
 [승인] `<제어면>`의 `/etc/kubernetes/manifests/kube-apiserver.yaml`을 바꿉니다. 파일이 바뀌면 kubelet이 그 제어면의 API server를 다시 시작합니다. 제어면이 한 대뿐이면 다시 시작하는 동안 API 요청이 중단되고, 여러 대면 다른 제어면이 요청을 받습니다. 대상 제어면, 아래 블록, 이 영향을 보여 주고 승인받은 뒤 실행합니다.
 
-아래 블록에서 `<issuer>`만 실제 값으로 바꿉니다. 프로그램은 다음과 같이 동작합니다.
+아래 블록을 저장한 파일에서 `<issuer>`만 실제 값으로 바꿉니다. 프로그램은 다음과 같이 동작합니다.
 
 - kubeadm이 쓴 manifest를 전제로 합니다. command의 첫 항목 `    - kube-apiserver`(공백 4칸), 컨테이너의 `    volumeMounts:`(공백 4칸), Pod의 `  volumes:`(공백 2칸) 줄이 각각 하나씩 있고 그 아래 목록이 같은 들여쓰기의 `- `로 시작해야 합니다. 하나라도 다르면 쓰지 않고 멈춥니다.
 - `--oidc-*` 옵션 8개를 `- kube-apiserver` 줄 바로 아래에 넣습니다. 같은 이름의 옵션이 같은 값으로 있으면 넣지 않고, 다른 값으로 있거나 `--authentication-config`가 있으면 쓰지 않고 멈춥니다.
@@ -88,7 +89,7 @@ API server 컨테이너에도 이 파일이 보여야 하므로 3단계에서 `/
 - 기존 줄은 지우거나 고치지 않습니다. 결과를 `/etc/kubernetes/backup/`의 임시 파일에 쓰고, 그 파일이 기존 줄을 순서대로 모두 담고 있을 때만 원본을 `/etc/kubernetes/backup/kube-apiserver.<시각>.yaml`로 백업한 뒤 manifest를 교체합니다. 노드에 PyYAML이 있으면 YAML 해석과 옵션·마운트 확인도 통과해야 교체합니다. 백업은 kubelet이 읽는 manifests 폴더 밖에 둡니다.
 - 다시 실행해도 됩니다. 넣을 것이 없으면 `변경 없음`을 출력하고 파일과 백업을 만들지 않습니다.
 
-실행 위치는 `<제어면>`이며 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 블록 전체를 전달합니다.
+실행 위치는 `<제어면>`입니다. 블록 전체를 관리 호스트의 저장소 밖 파일에 저장하고, 저장한 파일 안의 `<issuer>`를 실제 값으로 바꾼 뒤 `python3 deploy/shared/scripts/node_exec.py <제어면> --context "<context>" --script <블록 파일>`로 전달합니다([노드 명령 실행](../infrastructure/access.md#노드-명령-실행)).
 
 ```bash
 sudo python3 - '<issuer>' <<'PY'
@@ -250,15 +251,15 @@ kubectl --context "<context>" -n kube-system get pod "kube-apiserver-<제어면>
 
 **성공:** `pod/kube-apiserver-<제어면> condition met`, `ok`, 노드 `STATUS`가 `Ready`, 마지막 줄이 `8`입니다. 이 결과가 나온 뒤에 다음 제어면의 2단계로 갑니다. 이 조회만으로 OIDC 로그인 성공이 검증되지는 않습니다.
 
-**실패:** 5분 안에 위 결과가 나오지 않으면 다음 제어면으로 가지 않고 아래 순서로 복구합니다. 제어면이 한 대뿐이면 API가 응답하지 않아 `kubectl`도 실패합니다.
+**실패:** 5분 안에 위 결과가 나오지 않으면 다음 제어면으로 가지 않고 아래 순서로 복구합니다. 제어면이 한 대뿐이면 API가 응답하지 않아 `kubectl`과 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)도 실패합니다. 이때는 그 절의 `막히면 요청할 것`에 따라 대상 제어면과 1·2번 블록을 전달합니다.
 
-1. [조회] `<제어면>`에서 원인과 백업 파일을 봅니다. 접근 방법은 [노드 SSH](../infrastructure/access.md#노드-ssh)입니다.
+1. [조회] `<제어면>`에서 원인과 백업 파일을 봅니다. 블록은 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다.
    ```bash
    sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock ps -a --name kube-apiserver
    sudo journalctl -u kubelet --since '10 min ago' --no-pager | tail -n 40
    sudo ls -1t /etc/kubernetes/backup/
    ```
-2. [승인] `<제어면>`에서 3단계가 출력한 백업 파일로 manifest를 되돌립니다. kubelet이 API server를 이전 설정으로 다시 시작하며, 3단계에서 승인받은 같은 제어면의 재시작 범위입니다.
+2. [승인] `<제어면>`에서 3단계가 출력한 백업 파일로 manifest를 되돌립니다. kubelet이 API server를 이전 설정으로 다시 시작하며, 3단계에서 승인받은 같은 제어면의 재시작 범위입니다. 블록은 `--command`로 전달합니다.
    ```bash
    sudo cp -p <백업 파일> /etc/kubernetes/manifests/kube-apiserver.yaml
    ```
@@ -321,7 +322,7 @@ kubectl --context "<context>" -n kube-system get pods -l component=kube-apiserve
 CA를 교체하면 새 CA 묶음으로 이 문서의 절차와 앱 쪽 CA 설정을 함께 갱신합니다. 옵션과 마운트가 이미 있으면 3단계는 `변경 없음`으로 끝나 API server가 다시 시작되지 않으므로, 제어면 한 대씩 다음 순서로 진행합니다.
 
 1. [변경] 2단계로 새 묶음을 `<제어면>`의 `/etc/kubernetes/oidc/keycloak-ca-bundle.pem`에 둡니다.
-2. [승인] `<제어면>`에서 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 API server 컨테이너를 멈춥니다. kubelet이 곧바로 다시 시작하며 새 CA 파일을 읽습니다. 영향은 3단계와 같습니다.
+2. [승인] `<제어면>`에서 API server 컨테이너를 멈춥니다. 블록은 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다. kubelet이 곧바로 다시 시작하며 새 CA 파일을 읽습니다. 영향은 3단계와 같습니다.
    ```bash
    sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock stop \
      "$(sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock ps --name kube-apiserver -q)"

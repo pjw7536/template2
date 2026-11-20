@@ -3,8 +3,8 @@
 [가이드 홈](../README.md#클러스터) · [새 서버 준비](prerequisites.md) · [CP1~3 셋업](control-plane.md) · [Traefik 셋업](../ingress/setup.md)
 
 **목적:** OS만 설치된 새 서버를 기존 kubeadm 클러스터의 Worker로 등록합니다. Airflow용 Worker도 이 문서로 등록합니다.
-**준비물:** 관리 호스트의 관리자 kubeconfig, 새 서버와 CP1의 SSH 접속과 sudo([노드 SSH](../infrastructure/access.md#노드-ssh)), 사내 미러 접근, 기존 CP1에서 검증된 registry 설정.
-**실행 위치:** 단계 제목에 적습니다. 관리 호스트 블록은 저장소 루트에서 실행합니다. 새 Worker·CP1에서 실행하는 블록은 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 블록 전체를 그 서버의 셸(bash)에 전달하며 블록마다 새 셸입니다.
+**준비물:** 관리 호스트의 관리자 kubeconfig, CP1에서의 명령 실행([노드 명령 실행](../infrastructure/access.md#노드-명령-실행)), 새 서버에서 명령을 실행할 방법([가입 전 노드](../infrastructure/access.md#가입-전-노드)), 사내 미러 접근, 기존 CP1에서 검증된 registry 설정.
+**실행 위치:** 단계 제목에 적습니다. 관리 호스트 블록은 저장소 루트에서 실행합니다. CP1에서 실행하는 블록은 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다. 새 Worker에서 실행하는 블록(2·4단계)은 그 서버가 아직 클러스터에 가입하지 않아 관리 호스트에서 닿지 않습니다. [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 블록을 문서 순서대로 사용자에게 전달해 실행 결과를 받고, 5단계의 `kubectl get node` 확인부터 이어서 진행합니다. 블록마다 새 셸(bash)입니다.
 
 확인된 설치 기준은 **Ubuntu 22.04.2 LTS · Kubernetes 1.36.0 · containerd 2.2.1**입니다.
 조회 근거와 남은 확인은 [서버 현황](../infrastructure/servers.md#확인된-worker-설치-기준)에 있습니다.
@@ -28,7 +28,7 @@ command -v kubeadm k3s rke2
 **OS만 설치된 새 Ubuntu 22.04 amd64 Worker**에서 순서대로 실행하며 기존 Ready 노드에는 실행하지 않습니다.
 kubeadm은 런타임과 kubelet을 자동 설치하지 않습니다.
 
-[조회] 새 Worker에서 대상 서버가 맞는지 확인합니다. 이 절의 블록은 따로 적지 않으면 새 Worker에서 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+[조회] 새 Worker에서 대상 서버가 맞는지 확인합니다. 이 절의 블록은 따로 적지 않으면 새 Worker에서 실행하며 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 전달합니다.
 
 ```bash
 cat /etc/os-release
@@ -50,20 +50,20 @@ sudo test -e /etc/kubernetes/kubelet.conf && echo '이미 가입된 노드' || e
 **준비 파일:** 기존 CP1에서 검증된 registry별 `hosts.toml`·CA·인증 설정을 새 Worker의 `/var/tmp/worker-registry/`에 둡니다.
 `registry.k8s.io/hosts.toml`, `docker.io/hosts.toml`처럼 원래 registry 이름별 디렉터리를 사용합니다. 비밀값은 Git에 넣지 않습니다.
 
-1. [조회] CP1에서 registry 설정 폴더를 찾습니다.
+1. [조회] CP1에서 registry 설정 폴더를 찾습니다. 1·2번의 블록은 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script`로 CP1에 전달합니다.
    ```bash
    sudo grep -n 'config_path' /etc/containerd/config.toml
    sudo find /etc/containerd/certs.d -name hosts.toml
    ```
    `config_path` 값이 `<CP1 registry 설정 폴더>`입니다. 값이 `/etc/containerd/certs.d`가 아니면 그 경로로 `find`를 다시 실행해 `hosts.toml` 목록을 확인합니다.
-2. [변경] CP1에서 그 폴더를 묶음 파일 하나로 만듭니다. 인증 설정이 들어 있을 수 있으므로 접속 계정만 읽는 파일을 먼저 만들고 그 안에 씁니다.
+2. [변경] CP1에서 그 폴더를 묶음 파일 하나로 만듭니다. 인증 설정이 들어 있을 수 있으므로 소유자만 읽는 파일을 먼저 만들고 그 안에 씁니다.
    ```bash
    install -m 0600 /dev/null /var/tmp/worker-registry.tgz
    sudo tar -C <CP1 registry 설정 폴더> -czf - . > /var/tmp/worker-registry.tgz
    ls -l /var/tmp/worker-registry.tgz
    ```
    성공: 권한 `-rw-------`이고 크기가 0이 아닌 파일이 표시됩니다.
-3. [변경] [노드 SSH](../infrastructure/access.md#노드-ssh)의 파일 전송 방법으로 CP1의 `/var/tmp/worker-registry.tgz`를 새 Worker의 `/var/tmp/worker-registry.tgz`로 옮깁니다. 관리 호스트를 거쳤다면 관리 호스트의 사본을 지웁니다.
+3. [변경] CP1의 `/var/tmp/worker-registry.tgz`를 새 Worker의 `/var/tmp/worker-registry.tgz`로 옮깁니다. 새 Worker는 관리 호스트에서 닿지 않고 이 파일에는 인증 설정이 들어 있을 수 있어 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--copy`를 쓰지 않습니다. [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 두 경로를 전달하고 옮긴 결과를 받습니다. 관리 호스트를 거쳤다면 관리 호스트의 사본을 지웁니다.
 4. [변경] 새 Worker에서 풉니다.
    ```bash
    sudo install -d -m 0700 /var/tmp/worker-registry
@@ -71,7 +71,7 @@ sudo test -e /etc/kubernetes/kubelet.conf && echo '이미 가입된 노드' || e
    rm -f /var/tmp/worker-registry.tgz
    sudo find /var/tmp/worker-registry -name hosts.toml
    ```
-   성공: 1번에서 본 것과 같은 `hosts.toml` 목록이 출력됩니다. CP1의 `/var/tmp/worker-registry.tgz`도 `rm -f`로 지웁니다.
+   성공: 1번에서 본 것과 같은 `hosts.toml` 목록이 출력됩니다. CP1의 `/var/tmp/worker-registry.tgz`도 `python3 deploy/shared/scripts/node_exec.py <CP1 노드 이름> --context "<context>" --command 'rm -f /var/tmp/worker-registry.tgz'`로 지웁니다.
 
 설치 명령은 전용 source 파일·빈 추가 source 디렉터리·전용 패키지 색인을 사용합니다.
 각 `apt-get`·`apt-cache`에 `APT_MIRROR_OPTIONS`를 전달해 기존 공개 source나 오래된 색인을 사용하지 않습니다. 블록마다 새 셸이므로 이 배열을 쓰는 블록은 첫머리에서 다시 설정합니다.
@@ -298,18 +298,18 @@ kubelet은 join 전에 설정이 없어 재시작을 반복할 수 있습니다.
 
 ## 3. Worker 가입 명령 발급 — CP1
 
-[변경] kubeadm으로 관리하는 기존 클러스터의 CP1에서 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다. 새 token이 만들어집니다.
+[변경] kubeadm으로 관리하는 기존 클러스터의 CP1에서 실행하며 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--command`로 전달합니다. 새 token이 만들어집니다.
 
 ```bash
 sudo kubeadm token create --print-join-command
 ```
 
-**기대 결과:** `kubeadm join <endpoint> --token … --discovery-token-ca-cert-hash …` 한 줄(**Worker용 가입 명령**)이 출력됩니다. 이 줄 전체가 4단계의 `<join 명령>`입니다. token은 응답·운영 기록·보고와 Git·공용 로그에 옮겨 적지 않습니다.
+**기대 결과:** `kubeadm join <endpoint> --token … --discovery-token-ca-cert-hash …` 한 줄(**Worker용 가입 명령**)이 출력됩니다. 이 줄 전체가 4단계의 `<join 명령>`입니다. token은 4단계에서 새 Worker로 전달하는 것 말고는 응답·운영 기록·보고와 Git·공용 로그에 옮겨 적지 않습니다.
 endpoint·CA hash를 임의로 바꾸지 않습니다. 출력된 endpoint가 [VIP와 backend](../infrastructure/network.md#vip와-backend)에 기록된 API VIP와 같은지 대조하며, 조회된 CP1 InternalIP로 대체하지 않습니다.
 
 ## 4. 클러스터 가입 — 새 Worker
 
-실행 위치는 새 Worker이며 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다. Worker용 명령에는 `--control-plane`이 없습니다. 기존 Ready 노드에 다시 join하지 않으며 새 Worker에서 `kubeadm init`을 실행하지 않습니다.
+실행 위치는 새 Worker이며 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 블록을 전달합니다. `<join 명령>`은 3단계의 출력으로 채워 전달합니다. Worker용 명령에는 `--control-plane`이 없습니다. 기존 Ready 노드에 다시 join하지 않으며 새 Worker에서 `kubeadm init`을 실행하지 않습니다.
 
 1. [조회] 새 Worker가 가입 전인지 확인합니다.
    ```bash
@@ -336,7 +336,7 @@ kubectl --context "<context>" -n kube-system get pods -o wide \
 
 **기대 결과:** `node/<새 Worker> condition met`이 출력되고, 예상한 InternalIP·hostname으로 Ready이며, CNI 등 해당 노드의 시스템 Pod가 정상입니다.
 
-**실패 확인:** NotReady이면 새 Worker에서 [조회]로 kubelet·containerd 로그와 CNI 상태를 확인합니다. 접근 방법은 [노드 SSH](../infrastructure/access.md#노드-ssh)입니다.
+**실패 확인:** NotReady이면 새 Worker에서 [조회]로 kubelet·containerd 로그와 CNI 상태를 확인합니다. 새 Worker가 노드 목록에 있으므로 블록을 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다. NotReady 때문에 `노드 명령 실패`나 대기 시간 초과로 끝나면 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 전달합니다.
 
 ```bash
 sudo journalctl -u kubelet -u containerd --since '15 min ago' --no-pager | tail -n 100

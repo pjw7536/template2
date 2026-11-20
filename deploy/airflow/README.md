@@ -37,14 +37,14 @@ Airflow를 설치·운영하는 문서입니다. 단계 표시([조회]·[검사
 | 준비 작업 | 완료 확인 |
 | --- | --- |
 | 실행 Worker `khinfow01`이 `Ready`이고 cordon 상태가 아님 | `kubectl --context "<context>" get node khinfow01` |
-| `khinfow01`의 containerd와 관리 호스트가 사내 이미지 저장소 인증서를 신뢰(노드 설정, [방법](../registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰)) | 관리 호스트는 [CA 신뢰 확인](../registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰), `khinfow01`은 [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 [시험 이미지 pull](../registry/docs/01-operations.md#수동-pushpull-시험) |
+| `khinfow01`의 containerd와 관리 호스트가 사내 이미지 저장소 인증서를 신뢰(노드 설정, [방법](../registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰)) | 관리 호스트는 [CA 신뢰 확인](../registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰), `khinfow01`은 [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)으로 [시험 이미지 pull](../registry/docs/01-operations.md#수동-pushpull-시험) |
 | chart 파일 `deploy/airflow/helm/vendor/airflow-1.22.0.tgz`. 자동: 없으면 사내 미러에서 받음. 미러에서 받지 못하면 [파일 반입](../shared/docs/infrastructure/access.md#파일-반입)으로 둠([방법](docs/02-artifacts.md#1-공식-chart-준비)) | `make ops-preflight APP=airflow KUBE_CONTEXT="<context>"`의 `chart` 줄이 `[통과]` 또는 `[자동 준비]` |
 | 사내 Root·Issuing CA 파일을 `deploy/shared/certs/ca/`에 배치([인증서 발급](../shared/docs/infrastructure/access.md#인증서-발급)). 자동: CA 묶음 생성 | `make ops-preflight APP=airflow KUBE_CONTEXT="<context>"`의 `사내 CA 묶음` 줄이 `[통과]` 또는 `[자동 준비]` |
 | `airflow.etch.samsungds.net`을 SAN에 가진 `fullchain.crt`·`private.key`를 `deploy/shared/certs/etch.samsungds.net/`에 배치([인증서 발급](../shared/docs/infrastructure/access.md#인증서-발급)). 자동: 공용 TLS 등록 | `make ops-preflight APP=airflow KUBE_CONTEXT="<context>"`의 `공용 TLS airflow.etch.samsungds.net` 줄이 `[통과]` 또는 `[자동 준비]` |
 | 이미지 빌드 도구(nerdctl·BuildKit). 자동: 없으면 설치. 비밀번호 없는 sudo가 필요([관리 호스트 sudo](../shared/docs/infrastructure/access.md#관리-호스트-sudo)) | `make build-tools-check` |
 | 관리 호스트에서 Keycloak 공개 주소 `sso.etch.samsungds.net`의 이름 조회. `airflow-keycloak-client`가 이 주소의 관리 API를 호출 | `getent hosts sso.etch.samsungds.net`. 출력이 없으면 [DNS](../shared/docs/infrastructure/access.md#dns) |
 | DNS `airflow.etch.samsungds.net` → APP VIP. 없어도 배포는 진행하며 smoke가 `DNS 미등록`으로 표시 | `getent hosts airflow.etch.samsungds.net`. 출력이 없으면 [DNS](../shared/docs/infrastructure/access.md#dns) |
-| ODBC를 쓰면 `khinfow01`의 `/appdata/airflow/odbc`에 실제 드라이버 파일 배치([방법](odbc/README.md#worker에-반영)) | [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 `khinfow01`에서 `sudo -n ls -lnR /appdata/airflow/odbc`. 기준은 [Worker에 반영](odbc/README.md#worker에-반영) |
+| ODBC를 쓰면 `khinfow01`의 `/appdata/airflow/odbc`에 실제 드라이버 파일 배치([방법](odbc/README.md#worker에-반영)) | [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py khinfow01 --context "<context>" --command 'sudo -n ls -lnR /appdata/airflow/odbc'`. 기준은 [Worker에 반영](odbc/README.md#worker에-반영) |
 
 DAG 공유 폴더가 비어 있으면 `airflow-up`이 이미지에 들어 있는 DAG와 준비 표식을 복사합니다. 파일이 이미 있으면 바꾸지 않습니다.
 
@@ -100,7 +100,7 @@ make airflow-check KUBE_CONTEXT="<context>"
 
 | 변경 | 실행 |
 | --- | --- |
-| DAG 파일만(공유 폴더 사용 중) | [변경] [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 `khinfow01`의 `/appdata/airflow/dags`에 반영([방법](docs/04-operations.md#dag-파일-추가수정삭제)). 재배포 없음 |
+| DAG 파일만(공유 폴더 사용 중) | [변경] [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)으로 `khinfow01`의 `/appdata/airflow/dags`에 반영([방법](docs/04-operations.md#dag-파일-추가수정삭제)). 재배포 없음 |
 | `apps/airflow` 소스(플러그인·패키지·ODBC, `dags` 제외) | [승인] tag가 자동으로 바뀌어 실행 중 작업이 중단되고 운영 중인 DB에 migration이 실행됩니다. [배포 전 준비](docs/04-operations.md#이미지-업데이트)를 마치고 승인받은 뒤 `make ops-deploy APP=airflow KUBE_CONTEXT="<context>"` |
 | env(알림·OIDC·runtime 값) | [변경] `make ops-deploy APP=airflow KUBE_CONTEXT="<context>"`. Pod는 배포 마지막에 재시작됨. 저장소 밖 env는 같은 명령에 `AIRFLOW_ENV=<경로>`를 붙임 |
 | 인증서 | [변경] [공용 TLS 등록](../README.md#공용-tls-등록)의 명령으로 `airflow.etch.samsungds.net`을 다시 등록 |
@@ -143,7 +143,7 @@ Job 로그 조회와 그 밖의 증상은 [실패 단계 확인](docs/04-operati
 | `공용 TLS 마운트가 없습니다` | [변경] `make ops-deploy APP=ingress KUBE_CONTEXT="<context>"` 뒤 다시 실행 |
 | `registry에 연결할 수 없습니다` | [조회] `make registry-smoke KUBE_CONTEXT="<context>"`로 Registry를 확인. 정상이면 관리 호스트의 [CA 신뢰](../registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰)와 [DNS](../shared/docs/infrastructure/access.md#dns) |
 | `Airflow client 등록 실패` | [조회] `getent hosts sso.etch.samsungds.net`에 출력이 없으면 [DNS](../shared/docs/infrastructure/access.md#dns) 절로 등록. `make keycloak-smoke KUBE_CONTEXT="<context>"`가 실패하면 [Keycloak 가이드](../keycloak/README.md). 둘 다 정상이면 관리자 계정이나 기존 client secret이 env와 다른 것이므로 [client 등록](docs/03-deploy.md#client-등록)의 방법으로 대조 |
-| Pod `ImagePullBackOff` | 노드가 사내 이미지 저장소 인증서를 신뢰하지 않거나 이미지가 저장소에 없음. [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 [노드의 CA 신뢰](../registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰)를 확인하고, 이미지가 없으면 [변경] `make airflow-image KUBE_CONTEXT="<context>"` |
+| Pod `ImagePullBackOff` | 노드가 사내 이미지 저장소 인증서를 신뢰하지 않거나 이미지가 저장소에 없음. [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)으로 [노드의 CA 신뢰](../registry/docs/01-operations.md#노드와-관리-호스트의-ca-신뢰)를 확인하고, 이미지가 없으면 [변경] `make airflow-image KUBE_CONTEXT="<context>"` |
 | ODBC 마운트 실패 | `khinfow01`의 `/appdata/airflow/odbc`가 없거나 읽을 수 없음. [Worker에 반영](odbc/README.md#worker에-반영) |
 | Pod는 Ready인데 smoke가 `DNS 조회 실패, APP VIP 직접 접속도 실패` | 서비스가 Ingress를 거쳐 응답하지 않음. [Service 직접 확인](docs/03-deploy.md#접속과-연동-확인)으로 앱과 진입 경로를 나눠 확인 |
 

@@ -93,11 +93,11 @@ kubectl --context "<context>" -n monitoring get events --sort-by=.lastTimestamp
 | `chart SHA-256 불일치` | 고정 버전 패키지를 다시 준비. 임의 chart로 대체하지 않음 |
 | `Secret monitoring-grafana-admin이 없습니다` | `MONITORING_GRAFANA_ENV`가 가리키는 [계정 파일](01-prepare.md#grafana-관리자-계정) 확인 |
 | 기존 Operator CRD·다른 chart 버전 | 기존 모니터링·release 확인. CRD를 삭제해 우회하지 않음 |
-| `ImagePullBackOff`·`ErrImagePull` | 실패한 이미지의 미러 경로·태그·노드 CA·접근 권한·pull Secret 확인. BusyBox도 포함. [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)로 그 노드에서 `sudo -n crictl pull <이미지>`로 재현. 미러에 없으면 [파일 반입](../../shared/docs/infrastructure/access.md#파일-반입) |
+| `ImagePullBackOff`·`ErrImagePull` | 실패한 이미지의 미러 경로·태그·노드 CA·접근 권한·pull Secret 확인. BusyBox도 포함. [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n crictl pull <이미지>'`로 재현. 미러에 없으면 [파일 반입](../../shared/docs/infrastructure/access.md#파일-반입) |
 | `monitoring-storage-prepare-*` 실패 | 아래 Job 로그와 Pod Events 확인. root·hostPath 허용, 디스크 마운트, 파일·심볼릭 링크 점유 확인 |
-| 기존 PV 경로·노드·PVC 오류 | env를 기존 저장소 설정과 대조. 기존 PV 폴더가 사라졌으면 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)로 마운트·데이터를 조회해 보고. PV·PVC·폴더를 새로 만들지 않음 |
+| 기존 PV 경로·노드·PVC 오류 | env를 기존 저장소 설정과 대조. 기존 PV 폴더가 사라졌으면 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)으로 마운트·데이터를 조회해 보고. PV·PVC·폴더를 새로 만들지 않음 |
 | `Pending`·PVC 미결합 | 지정 Worker Ready·taint·자원 여유, PV/PVC 연결 상태 확인 |
-| Grafana 데이터 폴더 권한 오류 | [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)로 기존 폴더의 UID/GID 확인([기준](01-prepare.md#저장소와-폴더)). 자동 생성은 기존 파일 권한을 변경하지 않음 |
+| Grafana 데이터 폴더 권한 오류 | [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)으로 기존 폴더의 UID/GID 확인([기준](01-prepare.md#저장소와-폴더)). 자동 생성은 기존 파일 권한을 변경하지 않음 |
 | 화면 접속 실패 | `make monitoring-smoke KUBE_CONTEXT="<context>"`로 구간 확인. `DNS 미등록`이면 [DNS](../../shared/docs/infrastructure/access.md#dns), 그 밖에는 443 경로([방화벽](../../shared/docs/infrastructure/access.md#방화벽)), 공용 Traefik·인증서·서비스별 HOST 입력 확인 |
 | 새 Worker 지표 없음 | 해당 노드의 node-exporter Pod, 미러 pull, `9100` 통신([방화벽](../../shared/docs/infrastructure/access.md#방화벽))과 Prometheus target 확인 |
 

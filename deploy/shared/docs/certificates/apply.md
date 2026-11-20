@@ -132,7 +132,7 @@ make ingress-tls-up KUBE_CONTEXT="<context>" TLS_HOST=<공개 host> TLS_CERT_FIL
 ### Ubuntu 서버·클라이언트
 
 해당 호스트가 HTTPS 클라이언트로 요청할 때 기본 신뢰 검증이 실패하는 경우에만 진행합니다. 신뢰가 필요한 관리 호스트·Worker 각각에서 수행하며, Root CA 공개 인증서만 전달합니다.
-관리 호스트에서는 [관리 호스트 sudo](../infrastructure/access.md#관리-호스트-sudo), Worker에서는 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+관리 호스트에서는 [관리 호스트 sudo](../infrastructure/access.md#관리-호스트-sudo)로 실행합니다. Worker에서 실행할 블록은 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다.
 
 [조회] 그 호스트에서 현재 신뢰 상태를 확인합니다.
 
@@ -142,7 +142,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' "https://<공개 host>/"
 
 HTTP 상태 코드가 출력되면 이미 신뢰하고 있으므로 아래를 진행하지 않습니다. `SSL certificate problem`으로 실패하면 Root CA를 등록합니다.
 
-[변경] Root CA를 그 호스트의 시스템 신뢰 저장소에 등록합니다. `<Root CA 파일>`은 관리 호스트에서는 `deploy/shared/certs/ca/SECDS-T2RootCA.crt`이고, Worker에서는 그 파일을 [노드 SSH](../infrastructure/access.md#노드-ssh)의 파일 전송 방법으로 복사해 둔 경로(예: `/tmp/SECDS-T2RootCA.crt`)입니다. 첫 줄은 PEM이 아닌 DER 파일도 PEM으로 바꿔 설치합니다.
+[변경] Root CA를 그 호스트의 시스템 신뢰 저장소에 등록합니다. `<Root CA 파일>`은 관리 호스트에서는 `deploy/shared/certs/ca/SECDS-T2RootCA.crt`이고, Worker에서는 `/tmp/node-exec/SECDS-T2RootCA.crt`입니다. Worker에는 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)에 `--copy deploy/shared/certs/ca/SECDS-T2RootCA.crt:/tmp/node-exec/SECDS-T2RootCA.crt`와 `--script <블록 파일>`을 함께 지정해 파일을 먼저 보내고 블록을 실행합니다. 첫 줄은 PEM이 아닌 DER 파일도 PEM으로 바꿔 설치합니다.
 
 ```bash
 openssl x509 -in "<Root CA 파일>" -out /tmp/SECDS-T2RootCA.pem 2>/dev/null ||

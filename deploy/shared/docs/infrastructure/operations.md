@@ -42,7 +42,7 @@ Worker의 앱 소유 호스트 경로는 `/appdata/<app 또는 domain>` 아래�
 
 ### 1. 디스크 확인 — 각 Worker
 
-[조회] 각 Worker에서 [노드 SSH](access.md#노드-ssh)로 실행해 `/appdata`가 의도한 데이터 파일시스템에 있는지 확인합니다.
+[조회] 각 Worker에서 [노드 명령 실행](access.md#노드-명령-실행)으로 실행해 `/appdata`가 의도한 데이터 파일시스템에 있는지 확인합니다.
 
 ```bash
 findmnt -T /appdata

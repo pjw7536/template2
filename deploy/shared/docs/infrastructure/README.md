@@ -14,7 +14,7 @@
 | 서비스 URL·namespace·앱 배치·스토리지 연결·사내 업무 API | [서비스·업무 연동](services.md) | 네트워크, 서버, 앱 실행 입력 |
 | 사내 Git·registry·APT·PyPI·Helm·artifact·미러 이름 | [저장소·미러](repositories.md) | 소비 앱의 빌드·배포 입력, 설치 절차 |
 | checkout·env·인증서·kubeconfig·데이터·백업 위치·담당자 | [운영 위치·책임](operations.md) | 서비스 배치, 노드, 인증서·복구 절차 |
-| 클러스터 밖 작업의 접근 방법(노드 SSH·DNS·방화벽·LB·인증서 발급·관리 API)과 계정 위치 | [접근 경로](access.md) | 서버·노드, 네트워크, 운영 위치 |
+| 클러스터 밖 작업의 접근 방법(노드 명령 실행·DNS·방화벽·LB·인증서 발급·관리 API)과 계정 위치 | [접근 경로](access.md) | 서버·노드, 네트워크, 운영 위치 |
 | 서버에서 아직 적용·확인해야 하는 작업 | [서버 적용 대기 작업](pending.md) | 각 작업 행의 원본 문서 |
 | 외부 전달용 별칭(서버명·IP·사내 도메인 ↔ 별칭) | [별칭 표](aliases.json) | 서버·노드, 네트워크의 주소. `test_ops_tools.py`가 대조 |
 

@@ -33,7 +33,7 @@
 | --- | --- |
 | 앱 `ingress`(공용 Traefik) 배포([ingress 가이드](../shared/ingress/README.md)) | `make ops-preflight APP=registry KUBE_CONTEXT="<context>"`의 `먼저 필요한 앱 ingress`가 `[통과]` |
 | `store.etch.samsungds.net`이 SAN에 있는 `fullchain.crt`·`private.key`를 `deploy/shared/certs/etch.samsungds.net/`에 배치([인증서 발급](../shared/docs/infrastructure/access.md#인증서-발급)). 공용 TLS 등록은 `ops-deploy`의 준비 검사가 자동으로 수행 | `make ops-preflight APP=registry KUBE_CONTEXT="<context>"`의 `공용 TLS store.etch.samsungds.net`이 `[통과]` 또는 `[자동 준비]` |
-| Worker(`NODE_NAME`)의 `DATA_HOST_PATH` 상위 경로가 데이터 디스크에 마운트되고 `STORAGE_SIZE` 이상 여유. 최초 설치면 `DATA_HOST_PATH` 폴더가 없거나 비어 있음 | `df -hT /appdata`와 `sudo -n ls -A /appdata/registry`(Worker가 관리 호스트와 같은 서버일 때. 다른 노드면 [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 실행) |
+| Worker(`NODE_NAME`)의 `DATA_HOST_PATH` 상위 경로가 데이터 디스크에 마운트되고 `STORAGE_SIZE` 이상 여유. 최초 설치면 `DATA_HOST_PATH` 폴더가 없거나 비어 있음 | `df -hT /appdata`와 `sudo -n ls -A /appdata/registry`(Worker가 관리 호스트와 같은 서버일 때. 다른 노드면 [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'df -hT /appdata; sudo -n ls -A /appdata/registry'`) |
 | DNS `store.etch.samsungds.net` → APP VIP 등록([DNS](../shared/docs/infrastructure/access.md#dns)) | `getent hosts store.etch.samsungds.net` |
 | 관리 호스트와 이미지를 받을 모든 노드가 인증서의 발급 CA를 신뢰. 저장소 주소로 확인하므로 최초 설치에서는 C에서 확인 | [노드와 관리 호스트의 CA 신뢰](docs/01-operations.md#노드와-관리-호스트의-ca-신뢰) |
 
@@ -112,7 +112,7 @@ smoke 뒤에 `(DNS 미등록 host 1개)`가 붙으면 서비스는 정상이고 
 2. [변경] 관리 호스트에서 [시험 이미지를 push](docs/01-operations.md#수동-pushpull-시험)합니다.
 3. [변경] 이미지를 받을 노드마다 [시험 이미지를 pull](docs/01-operations.md#수동-pushpull-시험)합니다.
 
-노드 명령은 [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다. 접속하지 못한 노드는 확인하지 못한 것으로 보고에 남기고 나머지 노드를 계속 확인합니다.
+노드 명령은 관리 호스트에서 [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--command`로 전달합니다. 명령을 실행하지 못한 노드는 확인하지 못한 것으로 보고에 남기고 나머지 노드를 계속 확인합니다.
 
 ## 문제 해결과 멈춤 조건
 

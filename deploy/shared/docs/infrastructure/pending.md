@@ -58,7 +58,7 @@
 | 관리자 비밀번호 교체 | 강한 값으로 교체하고 Git 밖에서 관리 | Git 추적 env에 값이 있음: `deploy/keycloak/env/prod.env`의 `bootstrap-admin-password`, `deploy/portal/env/prod/api.env`의 `DJANGO_SUPERUSER_PASSWORD`, `deploy/minio/env/prod.env`의 `MINIO_ROOT_USER`·`MINIO_ROOT_PASSWORD`(기본값) | [환경설정](../configuration/environment.md), [Keycloak Secret 불일치](../../../keycloak/docs/03-operations.md#secret-불일치와-기존-db-복구) | 미확인 |
 | 백업 체계 | 앱 데이터·Keycloak DB·etcd의 백업 위치·주기·복구 검증 | 미확정 | [운영 책임·백업](operations.md#운영-책임백업인증서) | 미확인 |
 | 서버 checkout·Git | 사내 Git 주소·배포 브랜치·서버 checkout 경로 확정 | 미확인 | [사내 저장소 주소](repositories.md#공통-주소와-경로-규칙), [운영 파일 위치](operations.md#운영-파일과-데이터-위치) | 미확인 |
-| 접속·담당자 | 노드 SSH·관리망 경유지·서비스 담당자 | 미확인 | [추가 확인](servers.md#추가-확인접속-정보) | 미확인 |
-| 접근 경로 기록 | DNS·방화벽·LB·인증서 발급·노드 SSH·외부 DB의 접근 방법과 계정 위치를 처음 사용할 때 기록 | 모든 절 미확인 | [접근 경로](access.md) | 운영자 |
+| 접속·담당자 | 노드 명령 실행·관리망 경유지·서비스 담당자 | 미확인 | [추가 확인](servers.md#추가-확인접속-정보) | 미확인 |
+| 접근 경로 기록 | DNS·방화벽·LB·인증서 발급·노드 명령 실행·외부 DB의 접근 방법과 계정 위치를 처음 사용할 때 기록 | 모든 절 미확인 | [접근 경로](access.md) | 운영자 |
 | 권한관리(IAM) Keycloak 설정 | `IAM_PUBLIC_URL` 확정 뒤 `make ops-deploy APP=iam`. 권한관리 웹의 Kubernetes 배포 정의는 없음(전환 미완료) | 미확인 | [IAM 가이드](../../../iam/README.md) | 미확인 |
 | 서버 상태 보고서 전달 | 운영 agent가 `make ops-report`로 만든 별칭 보고서를 외부 개발 환경에 전달하고, 그 결과로 이 문서의 `미확인` 행을 정리 | 미확인. 보고서 생성 도구는 서버에서 실행된 적 없음 | [서버 상태 보고](../operations/04-drift.md#서버-상태-보고), [별칭 표](aliases.json) | 사용자 |

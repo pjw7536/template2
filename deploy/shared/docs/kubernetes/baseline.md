@@ -3,7 +3,7 @@
 [가이드 홈](../README.md#클러스터) · 이전: [용어](concepts.md)
 
 **목적:** 기존 클러스터와 노드의 상태를 조회해 설치·배포 기준을 확인합니다. 아래 명령은 설정을 변경하지 않습니다.
-**준비물:** 관리 호스트의 kubeconfig와 조회 권한([Kubernetes API](../infrastructure/access.md#kubernetes-api)), 2단계는 각 노드의 SSH 접속([노드 SSH](../infrastructure/access.md#노드-ssh)).
+**준비물:** 관리 호스트의 kubeconfig와 조회 권한([Kubernetes API](../infrastructure/access.md#kubernetes-api)), 2단계는 각 노드에서 명령을 실행할 방법([노드 명령 실행](../infrastructure/access.md#노드-명령-실행), 가입 전의 새 서버는 [가입 전 노드](../infrastructure/access.md#가입-전-노드)).
 
 ## 1. 클러스터 조회 — 관리 호스트
 
@@ -35,9 +35,10 @@ kubectl --context "<context>" get ingress -A
 
 새 서버를 구축하거나 기존 환경의 미확인 정보를 채울 때만 실행합니다.
 
-[조회] 조회할 노드마다 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다. 설치되지 않은 명령·서비스는 오류를 내지만 나머지 명령은 계속 실행됩니다.
+[조회] 조회할 노드마다 실행합니다. 클러스터에 가입한 노드는 블록을 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script`로 전달하고, 가입 전의 새 서버는 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 전달합니다. 첫 줄의 `set +e`는 실패한 줄에서 멈추지 않게 하므로, 설치되지 않은 명령·서비스는 오류를 내지만 나머지 명령은 계속 실행됩니다. 마지막 `systemctl`이 0이 아닌 코드로 끝나면 출력의 마지막 줄이 `노드 명령 실패: <노드>`가 되며, 이때도 그 위의 조회 결과를 읽습니다.
 
 ```bash
+set +e
 hostname
 cat /etc/os-release
 uname -r
@@ -63,7 +64,7 @@ systemctl is-active containerd kubelet k3s k3s-agent rke2-server rke2-agent
 | 설치 도구·CNI·CIDR·MTU·etcd 구성 | 1단계의 `kube-system` Pod·DaemonSet 목록과 제어면의 실행 설정 조회. 기록은 [클러스터 네트워크·실행 기반](../infrastructure/network.md#클러스터-네트워크실행-기반) |
 | API/APP VIP backend·상태 검사·TLS 종료 위치 | [APP VIP와 LB](../infrastructure/access.md#app-vip와-lb) 절의 방법. 기록은 [VIP와 backend](../infrastructure/network.md#vip와-backend) |
 | PV 경로·마운트·백업·StorageClass | 1단계의 `get storageclass`·`get pv`와 Worker의 `lsblk`·`df -hT` |
-| SSH/sudo·Git·registry·배포 권한 | [접근 경로](../infrastructure/access.md)의 각 절에 있는 `찾는 방법` |
+| 노드 명령 실행·sudo·Git·registry·배포 권한 | [접근 경로](../infrastructure/access.md)의 각 절에 있는 `찾는 방법` |
 
 확인값은 [기록 규칙](../infrastructure/README.md#기록-규칙)에 따라 해당 주제의 원본에 반영합니다.
 비밀번호·토큰·kubeconfig 내용은 기록하지 않습니다.

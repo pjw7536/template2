@@ -12,7 +12,7 @@ backend 변경은 서비스 진입 경로를 바꾸므로 4단계의 적용과 6
 | 위치 | 작업 |
 | --- | --- |
 | 관리 호스트 (저장소 루트) | 현재 배치 조회, 백업, 검사·적용·검증·복구 |
-| 새 Worker ([노드 SSH](../infrastructure/access.md#노드-ssh)) | 80/443 점유 확인, Traefik 이미지 접근 확인 |
+| 새 Worker ([노드 명령 실행](../infrastructure/access.md#노드-명령-실행)) | 80/443 점유 확인, Traefik 이미지 접근 확인 |
 | LB ([APP VIP와 LB](../infrastructure/access.md#app-vip와-lb)) | 새 Worker IP:443 backend 추가·활성화 |
 | 브라우저 ([화면 기능 확인](../infrastructure/access.md#화면-기능-확인)) | 서비스 도메인 HTTPS·로그인 확인 |
 
@@ -53,7 +53,7 @@ backend 목록이 비어 있으면 아직 이 저장소의 VIP 배치 목록이 
 
 ## 2. 새 Worker 진입 조건 확인 — 새 Worker
 
-[변경] 새 Worker에서 포트 점유를 조회하고 Traefik 이미지를 미리 받습니다(이미지만 내려받으며 실행 중인 것은 바꾸지 않습니다). 접근 방법은 [노드 SSH](../infrastructure/access.md#노드-ssh)이고 `<Traefik 이미지>`는 1단계에서 조회한 이미지입니다.
+[변경] 새 Worker에서 포트 점유를 조회하고 Traefik 이미지를 미리 받습니다(이미지만 내려받으며 실행 중인 것은 바꾸지 않습니다). 블록은 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script`로 전달하고, `<Traefik 이미지>`는 1단계에서 조회한 이미지입니다.
 
 ```bash
 sudo ss -lntp '( sport = :80 or sport = :443 )'

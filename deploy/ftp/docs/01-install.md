@@ -15,7 +15,7 @@
 | 위치 | 필요한 작업 | 접근 방법 |
 | --- | --- | --- |
 | 관리 호스트 | 저장소 checkout, Python 3.10+·Make·Bash·kubectl, kubeconfig. 검사·배포 실행 | [Kubernetes API](../../shared/docs/infrastructure/access.md#kubernetes-api) |
-| FTP를 실행할 각 Linux 노드 | Kubernetes 등록, 저장 디스크·기존 파일 권한·포트 확인 | [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh) |
+| FTP를 실행할 각 Linux 노드 | Kubernetes 등록, 저장 디스크·기존 파일 권한·포트 확인 | [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행) |
 | FTP 클라이언트 PC | 대상 노드 IP로 접속할 네트워크·FTP 클라이언트 | [방화벽](../../shared/docs/infrastructure/access.md#방화벽) |
 
 kubectl에는 노드 조회·라벨 변경, namespace·Secret·DaemonSet·ConfigMap 적용과 Pod 조회 권한이 필요합니다.
@@ -51,17 +51,17 @@ FTP Pod는 control-plane·master 역할의 `NoSchedule` taint만 허용합니다
 
 ### 3. 각 노드의 저장 폴더와 포트 확인
 
-[조회] 관리 호스트에서 선택한 **각 노드**마다 실행합니다. control plane을 포함했다면 해당 노드도 확인합니다. `<계정>@<노드>`와 접속 방법은 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh) 절을 따릅니다. 노드에서 읽기만 합니다.
+[조회] 관리 호스트에서 선택한 **각 노드**마다 실행합니다. control plane을 포함했다면 해당 노드도 확인합니다. `<노드>`는 2단계에서 조회한 `NAME`이며 명령은 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행) 절의 도구로 그 노드에서 실행됩니다. 노드에서 읽기만 합니다.
 
 ```bash
-ssh <계정>@<노드> 'hostname; ip -br address'
-ssh <계정>@<노드> 'df -h /appdata/data_movement 2>/dev/null || df -h /appdata 2>/dev/null || df -h /'
-ssh <계정>@<노드> 'sudo -n stat -c "%U:%G %a %n" /appdata/data_movement 2>/dev/null || echo "저장 폴더 없음"'
-ssh <계정>@<노드> 'sudo -n ls -A /data/data_movement 2>/dev/null | head -n 5'
-ssh <계정>@<노드> 'sudo -n ss -lntp | grep -E ":(6380|8076|8077|8078|8079)[[:space:]]" || echo "포트 사용 없음"'
+python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'hostname; ip -br address'
+python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'df -h /appdata/data_movement 2>/dev/null || df -h /appdata 2>/dev/null || df -h /'
+python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n stat -c "%U:%G %a %n" /appdata/data_movement 2>/dev/null || echo "저장 폴더 없음"'
+python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n ls -A /data/data_movement 2>/dev/null | head -n 5'
+python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n ss -lntp | grep -E ":(6380|8076|8077|8078|8079)[[:space:]]" || echo "포트 사용 없음"'
 ```
 
-성공: 첫 줄의 이름·주소가 대상 노드와 같고, 디스크에 여유가 있고, 넷째 명령의 출력이 없고, 마지막 명령이 `포트 사용 없음`을 출력합니다.
+성공: 명령마다 마지막 줄이 `노드 명령 완료: <노드>`입니다. 첫 명령의 이름·주소가 대상 노드와 같고, 디스크에 여유가 있고, 넷째 명령은 그 완료 줄만 출력하고, 마지막 명령이 `포트 사용 없음`을 출력합니다.
 
 **기대 결과와 조치:**
 
@@ -83,7 +83,7 @@ ssh <계정>@<노드> 'sudo -n ss -lntp | grep -E ":(6380|8076|8077|8078|8079)[[
 새 설치는 준비된 계정 파일 `deploy/ftp/env/initial-account.env`를 그대로 사용하므로 따로 할 일이 없습니다. `FTP_CREDENTIAL_FILE`을 지정하지 않으면 이 파일을 사용합니다.
 이미 FTP가 운영 중이어서 계정이 다르거나 다른 파일을 쓸 때만 아래 형식의 파일을 [운영 입력 파일](../../shared/docs/infrastructure/access.md#운영-입력-파일)의 위치에 두고, 배포·검사 명령에 `FTP_CREDENTIAL_FILE=<계정 파일 절대 경로>`를 붙입니다. 저장소의 계정 파일을 고치지 않습니다.
 
-- 파일에는 `FTP_USER`와 `FTP_PASS`를 각각 한 번만 `KEY=value`로 기록합니다. 값에 `export`나 감싸는 따옴표를 넣지 않습니다. 형식 예제는 [credentials.env.example](../credentials.env.example)입니다.
+- 파일에는 `FTP_USER`와 `FTP_PASS`를 각각 한 번만 `KEY=value`로 기록합니다. 값에 `export`나 감싸는 따옴표를 넣지 않습니다. 형식은 저장소의 [initial-account.env](../env/initial-account.env)와 같습니다.
 - 사용자 이름에는 영문·숫자·밑줄·하이픈만 사용합니다. 비밀번호는 비워 두지 않으며 줄바꿈·역슬래시를 넣지 않습니다.
 - 파일 권한이 넓으면 도구가 소유자 전용(0600)으로 좁힙니다. 좁힐 수 없으면 오류로 멈추므로 파일 소유자를 확인합니다.
 - 모든 대상 노드는 `etch-ftp/ftp-credentials` Secret을 공유합니다. `ftp-up`은 Secret이 없을 때만 이 파일로 만듭니다.
@@ -95,7 +95,7 @@ ssh <계정>@<노드> 'sudo -n ss -lntp | grep -E ":(6380|8076|8077|8078|8079)[[
 
 | 키 | 의미와 형식 |
 | --- | --- |
-| `FTP_IMAGE` | 사내 Docker Hub 미러의 이미지 주소(원본 digest 고정). 고정 tag 또는 sha256 digest가 있어야 하고 `latest`와 `http://`·`https://` 접두는 쓸 수 없음. 다른 경로·digest가 필요하면 저장소 밖 env 사본에서 실제 주소로 바꾸고, 사내 미러의 해당 digest 제공 여부·접근·CA는 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)로 Worker에서 `sudo -n crictl pull <이미지 주소>`로 확인 |
+| `FTP_IMAGE` | 사내 Docker Hub 미러의 이미지 주소(원본 digest 고정). 고정 tag 또는 sha256 digest가 있어야 하고 `latest`와 `http://`·`https://` 접두는 쓸 수 없음. 다른 경로·digest가 필요하면 저장소 밖 env 사본에서 실제 주소로 바꾸고, 사내 미러의 해당 digest 제공 여부·접근·CA는 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n crictl pull <이미지 주소>'`로 확인 |
 | `IMAGE_PULL_SECRET` | registry 인증이 필요할 때 `etch-ftp` namespace에 미리 만든 pull Secret 이름. 빈 값이면 추가하지 않음 |
 | `FTP_ALLOW_CONTROL_PLANE` | `true` 또는 `false`. [Control plane 선택](#control-plane도-대상에-추가하기) 참조 |
 
@@ -119,7 +119,7 @@ ssh <계정>@<노드> 'sudo -n ss -lntp | grep -E ":(6380|8076|8077|8078|8079)[[
 이미지·저장 경로·추가 패치를 Git 밖 overlay로 관리할 때 가이드의 배포 명령 대신 사용합니다. 두 배포 방식을 함께 실행하지 않으며, overlay 운영 중에는 `make ftp-up`과 `make ops-deploy APP=ftp`를 사용하지 않습니다.
 env와 overlay는 자동으로 합쳐지지 않습니다. overlay의 이미지·pull Secret·toleration은 아래 입력으로 직접 지정합니다. overlay 작성 → 검사와 렌더 확인 → 적용 → 배포 기록 순서로 진행합니다.
 
-**준비물:** [노드·계정 준비](#노드계정-준비) 완료, [저장소·미러 기록](../../shared/docs/infrastructure/repositories.md#서버가-받는-이미지)의 사내 registry에서 **실제로 확인한** `fauria/vsftpd` 이미지 경로와 digest. 원본 digest를 그대로 쓰려면 사내 registry에서도 같은 digest로 조회되는지 확인합니다. 확인은 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)로 대상 노드에서 `sudo -n crictl pull <이미지 경로>@<digest>`가 성공하는지 봅니다.
+**준비물:** [노드·계정 준비](#노드계정-준비) 완료, [저장소·미러 기록](../../shared/docs/infrastructure/repositories.md#서버가-받는-이미지)의 사내 registry에서 **실제로 확인한** `fauria/vsftpd` 이미지 경로와 digest. 원본 digest를 그대로 쓰려면 사내 registry에서도 같은 digest로 조회되는지 확인합니다. 확인은 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n crictl pull <이미지 경로>@<digest>'`가 대상 노드마다 `노드 명령 완료`로 끝나는지 봅니다.
 
 기본 경로가 다른 서버는 같은 목적의 경로를 준비하거나, 별도 overlay에서 hostPath와 노드 선택 라벨·DaemonSet 이름을 함께 변경해 서로 겹치지 않는 노드 그룹으로 배포합니다.
 

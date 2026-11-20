@@ -34,7 +34,7 @@
 | --- | --- |
 | 앱 `ingress`(공용 Traefik) 배포([ingress 가이드](../shared/ingress/README.md)) | `make ops-preflight APP=minio KUBE_CONTEXT="<context>"`의 `먼저 필요한 앱 ingress`가 `[통과]` |
 | `s3.etch.samsungds.net`·`minio.etch.samsungds.net`이 SAN에 있는 `fullchain.crt`·`private.key`를 `deploy/shared/certs/etch.samsungds.net/`에 배치([인증서 발급](../shared/docs/infrastructure/access.md#인증서-발급)). 공용 TLS 등록은 `ops-deploy`의 준비 검사가 host마다 자동으로 수행 | `make ops-preflight APP=minio KUBE_CONTEXT="<context>"`의 `공용 TLS` 두 줄이 `[통과]` 또는 `[자동 준비]` |
-| Worker(`NODE_NAME`)의 `MINIO_DATA_HOST_PATH` 상위 경로가 데이터 디스크에 마운트되고 `STORAGE_SIZE` 이상 여유([저장소](docs/01-configuration.md#저장소)) | `df -hT /appdata`(Worker가 관리 호스트와 같은 서버일 때. 다른 노드면 [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 실행) |
+| Worker(`NODE_NAME`)의 `MINIO_DATA_HOST_PATH` 상위 경로가 데이터 디스크에 마운트되고 `STORAGE_SIZE` 이상 여유([저장소](docs/01-configuration.md#저장소)) | `df -hT /appdata`(Worker가 관리 호스트와 같은 서버일 때. 다른 노드면 [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'df -hT /appdata'`) |
 | DNS 두 host → APP VIP 등록([DNS](../shared/docs/infrastructure/access.md#dns)) | `getent hosts s3.etch.samsungds.net minio.etch.samsungds.net` |
 
 DNS가 아직 없어도 배포는 진행합니다. smoke가 APP VIP로 서비스를 확인해 `DNS 미등록`으로 표시하고, 등록은 `ops-deploy` 요약의 `pending`에 남습니다.

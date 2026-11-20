@@ -14,9 +14,10 @@
 | 공용 Traefik이 Keycloak 배포에서 분리돼 앱 `ingress`가 됨 | 클러스터 리소스는 그대로. `ingress`의 배포 기록이 없음 | [1. 공용 Traefik 인수](#1-공용-traefik-인수) |
 | 앱마다 배포 정의·도구가 바뀌어 배포 기록의 내용 id가 달라짐 | 대조가 `마지막 배포 이후 앱 정의가 바뀜`을 보고 | [2. 배포된 앱의 기록 갱신](#2-배포된-앱의-기록-갱신) |
 | Portal API env의 `DJANGO_ALLOWED_HOSTS`·`AIRFLOW_PASSWORD` 기본값 수정 | 저장소 밖 env를 쓰면 같은 수정을 직접 반영해야 함 | [3. Portal env 값 반영](#3-portal-env-값-반영) |
+| 신규 설치용 계정 값 변경(Airflow 관리자 비밀번호, FTP 계정, Grafana 관리자 비밀번호) | 배포된 앱은 이전 계정으로 동작. Portal → Airflow 호출이 실패할 수 있음 | [4. 초기 계정 값 확인](#4-초기-계정-값-확인) |
 | Airflow 대조가 배포와 같은 설정으로 렌더 | 정상 배포인데 `driftResultCode` 1이던 문제가 사라짐 | [2. 배포된 앱의 기록 갱신](#2-배포된-앱의-기록-갱신) |
 | 명령 인자 변경 | 아래 [바뀐 명령](#바뀐-명령) 표 | — |
-| 클러스터 밖 작업의 접근 방법을 [접근 경로](../infrastructure/access.md) 한 곳에 기록 | 처음 쓰는 접근 방법을 그 표에 적음 | [4. 접근 경로 기록](#4-접근-경로-기록) |
+| 클러스터 밖 작업의 접근 방법을 [접근 경로](../infrastructure/access.md) 한 곳에 기록 | 처음 쓰는 접근 방법을 그 표에 적음 | [5. 접근 경로 기록](#5-접근-경로-기록) |
 
 타깃 이름(`make <app>-check`·`-up`·`-smoke`, `ops-deploy`, `drift-check`)과 env 파일 경로, 배포 기록의 형식은 그대로입니다.
 
@@ -45,7 +46,7 @@ kubectl --context "<context>" get configmaps -A -l deploy-record -o custom-colum
 | --- | --- |
 | 목록이 비어 있고 `kubectl --context "<context>" -n etch-sso get deployment traefik --ignore-not-found`도 비어 있음 | 배포된 앱이 없습니다. 이 문서를 건너뜁니다 |
 | `deploy-record-ingress`가 있음 | `적용됨`. 이 문서를 건너뜁니다 |
-| 그 밖(Traefik이나 다른 앱의 기록은 있는데 `deploy-record-ingress`가 없음) | 미적용. 아래 0~5를 순서대로 수행합니다 |
+| 그 밖(Traefik이나 다른 앱의 기록은 있는데 `deploy-record-ingress`가 없음) | 미적용. 아래 0~6을 순서대로 수행합니다 |
 
 ## 0. 시작 전 검사
 
@@ -134,11 +135,37 @@ Portal이 배포돼 있을 때만 수행합니다.
    ```
    성공: `{"app":`으로 시작하는 JSON 줄의 `"failedStep": null`, `"driftResultCode": 0`.
 
-## 4. 접근 경로 기록
+## 4. 초기 계정 값 확인
 
-[변경] [접근 경로](../infrastructure/access.md)에서 `접근 방법`이 `미확인`인 절 가운데 이미 사용해 본 방법(노드 SSH, DNS 신청, 인증서 파일 위치 등)을 `찾는 방법`의 [조회]로 확인해 채웁니다. 비밀값은 쓰지 않고 위치만 적습니다. 아직 써 보지 않은 절은 `미확인`으로 둡니다.
+저장소의 신규 설치용 계정 값이 바뀌었습니다: Airflow 관리자 비밀번호(Airflow env의 `AIRFLOW_ADMIN_PASSWORD`와 Portal API env의 `AIRFLOW_PASSWORD`), FTP 계정(`deploy/ftp/env/initial-account.env`), Grafana 관리자 비밀번호(`deploy/monitoring/env/grafana-initial.env`).
+이 값들은 처음 설치할 때만 쓰이므로 이미 배포된 앱은 이전 계정으로 동작합니다. 배포된 앱만 아래를 확인합니다. 저장소 밖 env·계정 파일로 배포한 앱은 그 파일이 기준이므로 건너뜁니다.
 
-## 5. 완료 확인과 기록
+1. FTP가 배포돼 있으면 [검사] 계정 파일과 기존 Secret을 비교합니다.
+   ```bash
+   make ftp-check KUBE_CONTEXT="<context>"
+   ```
+   통과하면 할 일이 없습니다. `기존 FTP Secret과 계정 파일이 다릅니다`면 서버는 이전 계정으로 동작 중입니다. 새 계정으로 바꾸는 것은 접속 중인 클라이언트에 영향을 주므로 [승인]이며 [계정 변경](../../../ftp/docs/02-operations.md#5-계정-변경)을 따릅니다. 승인받지 못하면 이전 계정을 그대로 두고 그 사실을 보고합니다. 이 경우 이후의 FTP 명령은 이전 계정 파일을 `FTP_CREDENTIAL_FILE=<경로>`로 지정해야 통과합니다.
+2. Monitoring이 배포돼 있으면 할 일이 없습니다. Grafana 관리자 Secret이 이미 있으면 계정 파일을 읽지 않습니다. 실제 로그인 비밀번호를 새 값으로 맞추라는 요청이 있을 때만 [Monitoring 가이드](../../../monitoring/README.md#b-업데이트)의 `Grafana 비밀번호` 행을 따릅니다.
+3. Airflow가 배포돼 있으면 관리자 계정의 실제 비밀번호를 env 값으로 맞춥니다. Airflow는 관리자 계정이 이미 있으면 env의 비밀번호를 반영하지 않는데, Portal은 env의 새 값으로 Airflow를 호출하기 때문입니다.
+   1. [변경] Airflow를 다시 배포해 Secret `airflow-admin`에 새 값을 넣습니다. 배포 마지막에 Airflow Pod가 다시 시작되므로 실행 중인 DAG run이 없을 때 실행합니다([Airflow 가이드](../../../airflow/README.md#b-업데이트)의 env 변경 행).
+      ```bash
+      make ops-deploy APP=airflow KUBE_CONTEXT="<context>"
+      ```
+      성공: `{"app":`으로 시작하는 JSON 줄의 `"failedStep": null`, `"driftResultCode": 0`.
+   2. [변경] 관리자 계정의 비밀번호를 Secret의 값으로 바꿉니다. 값은 화면에 출력되지 않습니다.
+      ```bash
+      kubectl --context "<context>" -n airflow exec deployment/airflow-scheduler -- airflow users reset-password \
+        --username "$(kubectl --context "<context>" -n airflow get secret airflow-admin -o jsonpath='{.data.username}' | base64 -d)" \
+        --password "$(kubectl --context "<context>" -n airflow get secret airflow-admin -o jsonpath='{.data.password}' | base64 -d)"
+      ```
+      성공: 종료 코드 0과 비밀번호를 바꿨다는 출력. 실패하면 출력의 오류 줄과 함께 보고하고, Portal의 Airflow 연동은 확인 전까지 정상으로 보고하지 않습니다.
+   3. [조회] Portal이 배포돼 있으면 위 두 단계와 [3. Portal env 값 반영](#3-portal-env-값-반영)을 마친 뒤 Portal의 Airflow 연동을 [화면 기능 확인](../infrastructure/access.md#화면-기능-확인) 절의 방법으로 확인합니다.
+
+## 5. 접근 경로 기록
+
+[변경] [접근 경로](../infrastructure/access.md)에서 `접근 방법`이 `미확인`인 절 가운데 이미 사용해 본 방법(DNS 신청, 인증서 파일 위치 등)을 `찾는 방법`의 [조회]로 확인해 채웁니다. [노드 명령 실행](../infrastructure/access.md#노드-명령-실행) 절은 `찾는 방법`의 [조회]가 노드 이름과 `0`을 출력하면 `확인 상태`를 고칩니다. 비밀값은 쓰지 않고 위치만 적습니다. 아직 써 보지 않은 절은 `미확인`으로 둡니다.
+
+## 6. 완료 확인과 기록
 
 1. [조회] 전체를 대조합니다.
    ```bash

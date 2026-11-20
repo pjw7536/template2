@@ -4,8 +4,8 @@
 
 **목적:** CP1에서 첫 제어면을 만들고 CP2·CP3를 같은 클러스터에 가입시킵니다. 초기화 절차는 새 서버에만 적용합니다.
 이미 CP1~3가 운영 중이면 [현재 환경 확인](baseline.md)만 수행하고 필요한 작업 문서로 이동합니다.
-**준비물:** [새 서버 준비](prerequisites.md)를 마친 CP1·CP2·CP3, 3단계의 kubeadm 설정 파일, 세 서버의 SSH 접속과 sudo([노드 SSH](../infrastructure/access.md#노드-ssh)).
-**실행 위치:** 단계 제목에 적습니다. 제어면에서 실행하는 블록은 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 블록 전체를 그 서버의 셸에 전달하며 블록마다 새 셸입니다. 관리 호스트 블록은 저장소 루트에서 실행합니다.
+**준비물:** [새 서버 준비](prerequisites.md)를 마친 CP1·CP2·CP3, 3단계의 kubeadm 설정 파일, 세 서버에서 명령을 실행할 방법([가입 전 노드](../infrastructure/access.md#가입-전-노드)).
+**실행 위치:** 단계 제목에 적습니다. 관리 호스트 블록은 저장소 루트에서 실행합니다. 2~4단계에서 새 서버(초기화 전의 CP1, 가입 전의 CP2·CP3)에서 실행하는 블록은 그 서버가 아직 클러스터에 없어 관리 호스트에서 닿지 않습니다. [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 블록을 문서 순서대로 사용자에게 전달해 실행 결과를 받으며 블록마다 새 셸입니다. 초기화를 마친 CP1에서 실행하는 블록(4단계 2번, 5단계)은 관리 호스트에 kubeconfig를 두었고([관리 호스트 준비](../operations/04-drift.md#관리-호스트-준비)) `kubectl --context "<context>" get node <노드>`가 CP1을 `Ready`로 보여 주면 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script`로 전달하고, 그렇지 않으면 같은 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 전달합니다. 세 제어면이 가입한 뒤에는 `kubectl --context "<context>" get nodes`의 `Ready` 확인부터 이어서 진행합니다.
 
 1~5단계의 [변경]은 아직 서비스하지 않는 새 서버에만 해당합니다. 운영 중인 클러스터의 `kubeadm init`·`kubeadm reset`과 서비스 중인 노드의 kubelet·containerd·API server 재시작은 [승인] 대상이며 이 문서로 수행하지 않습니다.
 
@@ -15,7 +15,7 @@
 
 | 확인할 값 | 기준 |
 | --- | --- |
-| CP1·CP2·CP3 | 서로 다른 hostname·고정 IP·SSH/sudo 접근 |
+| CP1·CP2·CP3 | 서로 다른 hostname·고정 IP·sudo 권한 |
 | OS·CPU·Kubernetes 버전 | 세 서버의 실제 값과 설치할 패키지 버전 |
 | 설치 도구 | kubeadm / k3s / RKE2 등 실제 운영 방식 |
 | 런타임·네트워크 | CRI·cgroup 설정, CNI·Pod/Service CIDR·MTU |
@@ -30,7 +30,7 @@
 
 1. [변경] [새 서버 준비](prerequisites.md#1-노드-준비--각-새-노드)의 노드 준비를 마칩니다.
 2. [변경] 확인된 기준(Ubuntu 22.04.2 LTS amd64·Kubernetes 1.36.0·containerd 2.2.1)이 같다면 [Worker 추가](worker.md#2-빈-서버에-프로그램-설치설정--새-worker)의 2-1~2-4 블록으로 런타임과 kubeadm·kubelet을 설치합니다.
-3. [변경] CP1에는 같은 버전의 kubectl도 설치합니다. 2-4를 마친 CP1에서 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+3. [변경] CP1에는 같은 버전의 kubectl도 설치합니다. 2-4를 마친 CP1에서 실행하며 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 전달합니다.
    ```bash
    APT_MIRROR_OPTIONS=(
      -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/worker-mirrors.list
@@ -47,7 +47,7 @@
 제어면별 OS·버전이 위 기준과 다르면 [해당 Kubernetes 버전의 공식 설치 절차](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/)를 사용합니다.
 제어면의 설치 기준은 [서버 현황](../infrastructure/servers.md#확인된-worker-설치-기준)의 남은 확인 항목입니다.
 
-[조회] 세 서버에서 각각 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+[조회] 세 서버에서 각각 실행하며 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 전달합니다.
 
 ```bash
 cat /etc/os-release
@@ -67,7 +67,7 @@ systemctl is-active containerd
 
 **입력:** kubeadm 설정 파일. API endpoint·CP1 주소·버전·이미지 저장소·CRI socket·인증서 SAN과
 선택한 CNI에 맞는 Pod/Service CIDR·DNS domain을 반영합니다. 저장소에 완성된 설정은 없습니다.
-값은 1단계의 기록에서 읽어 파일을 비대화형으로 작성하고, [노드 SSH](../infrastructure/access.md#노드-ssh)의 파일 전송 방법으로 CP1의 `<kubeadm 설정 파일>` 경로에 둡니다.
+값은 1단계의 기록에서 읽어 파일을 비대화형으로 작성합니다. CP1은 초기화 전이라 관리 호스트에서 파일을 보낼 수 없으므로, 작성한 파일을 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 전달해 CP1의 `<kubeadm 설정 파일>` 경로에 둡니다. 1~4번의 블록도 새 CP1에서 실행하며 같은 절에 따라 전달합니다.
 CNI·CIDR처럼 기록에 값이 없는 항목이 있으면 멈추고 그 항목을 보고합니다. 값을 추정해 초기화하지 않습니다.
 
 1. [조회] CP1이 초기화 전인지 확인합니다.
@@ -92,7 +92,7 @@ CNI 설치 전에는 노드가 NotReady일 수 있으며, 이를 이유로 init�
 
 ## 4. 나머지 제어면 가입 — 새 CP2 → 새 CP3
 
-각 서버에서 2단계를 마친 뒤 CP2, CP3 순서로 한 대씩 진행합니다. CP1과 가입할 서버에서 실행하는 블록은 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+각 서버에서 2단계를 마친 뒤 CP2, CP3 순서로 한 대씩 진행합니다. 가입할 서버에서 실행하는 1·3번 블록은 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절에 따라 전달합니다. CP1에서 실행하는 2번 블록은 위 실행 위치의 기준대로 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script` 또는 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절로 전달합니다.
 
 1. [조회] 가입할 서버가 가입 전인지 확인합니다. 실행 위치는 가입할 서버입니다.
    ```bash
@@ -104,7 +104,7 @@ CNI 설치 전에는 노드가 NotReady일 수 있으며, 이를 이유로 init�
    sudo kubeadm token create --print-join-command \
      --certificate-key "$(sudo kubeadm init phase upload-certs --upload-certs | tail -n 1)"
    ```
-   성공: `kubeadm join <endpoint> --token … --discovery-token-ca-cert-hash … --control-plane --certificate-key …` 한 줄이 출력됩니다. 이 줄 전체가 `<join 명령>`입니다. 응답·운영 기록·보고에 옮겨 적지 않습니다.
+   성공: `kubeadm join <endpoint> --token … --discovery-token-ca-cert-hash … --control-plane --certificate-key …` 한 줄이 출력됩니다. 이 줄 전체가 `<join 명령>`입니다. 3번에서 가입할 서버로 전달하는 것 말고는 응답·운영 기록·보고에 옮겨 적지 않습니다.
 3. [변경] 가입할 서버에서 그 명령을 sudo로 실행합니다.
    ```bash
    sudo <join 명령>
@@ -118,7 +118,7 @@ API LB의 CP1~3 backend와 상태 검사는 [APP VIP와 LB](../infrastructure/ac
 
 ## 5. 상태 확인 — CP1
 
-[조회] CP1에서 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+[조회] CP1에서 실행합니다. 위 실행 위치의 기준대로 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script` 또는 [가입 전 노드](../infrastructure/access.md#가입-전-노드) 절로 전달합니다.
 
 ```bash
 sudo kubectl --kubeconfig /etc/kubernetes/admin.conf get --raw='/readyz'

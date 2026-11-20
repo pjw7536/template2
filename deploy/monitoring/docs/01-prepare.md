@@ -64,7 +64,7 @@ grep '"sha256"' deploy/monitoring/helm/chart.lock.json
 데이터는 `NODE_NAME` Worker의 `DATA_HOST_PATH` 아래에 저장합니다. 폴더는 `monitoring-up`의 Job이 만들므로 수동으로 만들지 않습니다.
 데이터 디스크가 의도한 위치에 마운트되어 있고 여유 공간이 있는지는 배포 전에 Worker에서 확인합니다.
 
-[조회] 실행 위치는 `NODE_NAME` Worker(`khinfow01`)이며 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다. `/appdata`는 `DATA_HOST_PATH`(`/appdata/monitoring`)의 상위 폴더입니다.
+[조회] 실행 위치는 `NODE_NAME` Worker(`khinfow01`)이며 관리 호스트에서 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--command`로 전달합니다. `/appdata`는 `DATA_HOST_PATH`(`/appdata/monitoring`)의 상위 폴더입니다.
 
 ```bash
 df -h /appdata
@@ -121,7 +121,7 @@ cat .tools/render/monitoring/monitoring/images.txt
 | `images.txt` | 실행에 필요한 전체 이미지. Operator가 만드는 이미지와 폴더 준비용 BusyBox도 포함 | 이미지 이름이 한 줄에 하나씩 출력 |
 
 성공: 모든 명령이 통과하고 `images.txt`의 **모든 이미지·태그**를 각 실행 노드가 사내 미러에서 받을 수 있습니다. 렌더 성공만으로 실제 pull·디스크 권한·서버 보안 정책이 검증되지는 않습니다.
-노드에서 이미지를 받을 수 있는지는 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)로 그 노드에서 `sudo -n crictl pull <이미지>`를 실행해 확인합니다.
+노드에서 이미지를 받을 수 있는지는 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n crictl pull <이미지>'`로 확인합니다.
 렌더한 `monitoring.yaml`은 검토용이며 직접 `kubectl apply`하지 않습니다. CRD와 webhook 초기화 순서는 배포 도구가 관리합니다.
 `deploy/monitoring` 아래에는 렌더 결과를 쓰지 않습니다. 추적되지 않는 파일이 생기면 배포 상태 대조가 `앱 경로의 미커밋 변경` 경고를 냅니다.
 
@@ -129,7 +129,7 @@ cat .tools/render/monitoring/monitoring/images.txt
 
 `monitoring-up`이 Secret `monitoring-grafana-admin`이 없으면 계정 파일(`MONITORING_GRAFANA_ENV`, 기본 `deploy/monitoring/env/grafana-initial.env`)로 만듭니다. 기존 Secret은 바꾸지 않으며 `admin-user`·`admin-password` 키가 있는지만 확인합니다.
 
-- 계정 파일에는 `admin-user`와 `admin-password`를 `키=값`으로 각각 한 번만 기록합니다. 값에 `export`나 감싸는 따옴표를 넣지 않습니다. 형식 예시는 [grafana-admin.env.example](../env/grafana-admin.env.example)입니다.
+- 계정 파일에는 `admin-user`와 `admin-password`를 `키=값`으로 각각 한 번만 기록합니다. 값에 `export`나 감싸는 따옴표를 넣지 않습니다. 형식은 저장소의 [grafana-initial.env](../env/grafana-initial.env)와 같습니다.
 - 별도 계정 파일을 쓰려면 Git 밖에 권한 600으로 두고 `make ops-deploy APP=monitoring KUBE_CONTEXT="<context>" MONITORING_GRAFANA_ENV=/절대경로/grafana.env`처럼 지정합니다.
 - Helm은 Secret 이름을 참조합니다. Grafana DB가 만들어진 뒤에는 Secret만 바꿔도 비밀번호가 바뀌지 않으므로 [Grafana에서 갱신](02-operations.md#갱신운영)합니다.
 - Grafana를 [선택 설정](#선택-설정)에서 비활성화했다면 관리자 Secret을 만들지 않습니다.

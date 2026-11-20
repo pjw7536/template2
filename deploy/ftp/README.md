@@ -33,7 +33,7 @@
 | 준비 작업 | 완료 확인 |
 | --- | --- |
 | 최초 설치의 대상 노드 목록(`FTP_NODES`). 요청에 주어지는 입력입니다([선택 기준](docs/01-install.md#2-클러스터와-대상-노드-선택)) | `kubectl --context "<context>" get nodes`의 `NAME`에 요청받은 노드 이름이 모두 있음. 업데이트는 `kubectl --context "<context>" get nodes -l etch.io/ftp-enabled=true`가 기존 대상 노드를 출력 |
-| 각 대상 노드의 저장 디스크·기존 파일·포트 사용 확인 | [노드 SSH](../shared/docs/infrastructure/access.md#노드-ssh)로 [저장 폴더와 포트 확인](docs/01-install.md#3-각-노드의-저장-폴더와-포트-확인)의 명령을 실행. 포트 조회가 `포트 사용 없음`을 출력 |
+| 각 대상 노드의 저장 디스크·기존 파일·포트 사용 확인 | [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)으로 [저장 폴더와 포트 확인](docs/01-install.md#3-각-노드의-저장-폴더와-포트-확인)의 명령을 실행. 포트 조회가 `포트 사용 없음`을 출력 |
 | 방화벽 개방: 허용 출발지 → 각 노드 TCP 6380, 8076–8079([대상](../shared/docs/infrastructure/network.md#ftp-직접-접속)) | [방화벽](../shared/docs/infrastructure/access.md#방화벽) |
 
 ## 입력

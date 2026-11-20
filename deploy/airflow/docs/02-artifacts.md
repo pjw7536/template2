@@ -251,7 +251,7 @@ sudo -n nerdctl --address /run/containerd/containerd.sock --namespace default pu
 
 #### Registry 없이 전달하는 경우
 
-노드에서 실행하는 명령은 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 방법으로 실행합니다. `<repository:tag>`는 `AIRFLOW_IMAGE_REPOSITORY:AIRFLOW_IMAGE_TAG`와 같은 이름으로 바꿉니다. registry 없이 쓸 때의 이름은 `airflow:3.3.2-release-1`처럼 registry 주소가 없는 형식입니다.
+관리 호스트가 아닌 노드에서 실행하는 블록은 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다. `<repository:tag>`는 `AIRFLOW_IMAGE_REPOSITORY:AIRFLOW_IMAGE_TAG`와 같은 이름으로 바꿉니다. registry 없이 쓸 때의 이름은 `airflow:3.3.2-release-1`처럼 registry 주소가 없는 형식입니다.
 
 **1. 빌드한 Worker 자신에 등록**
 
@@ -280,7 +280,7 @@ sudo -n nerdctl --address /run/containerd/containerd.sock --namespace default sa
 sudo -n chown "$(id -u):$(id -g)" /tmp/airflow-image.tar
 ```
 
-[변경] `/tmp/airflow-image.tar`를 대상 Worker의 `/tmp/airflow-image.tar`로 복사합니다. [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)의 파일 전송 형식(`scp`)을 쓰며, 포트를 지정할 때 SCP는 대문자 `-P`, SSH는 소문자 `-p`입니다. SCP를 쓸 수 없으면 [파일 반입](../../shared/docs/infrastructure/access.md#파일-반입) 절의 방법으로 같은 파일을 복사합니다.
+[변경] `/tmp/airflow-image.tar`를 대상 Worker의 `/tmp/airflow-image.tar`로 옮깁니다. 이미지 tar는 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)의 `--copy`가 보낼 수 있는 크기(64KiB)를 넘으므로 [파일 반입](../../shared/docs/infrastructure/access.md#파일-반입) 절의 방법으로 같은 파일을 옮깁니다.
 
 [변경] 대상 Worker에서 `k8s.io` namespace에 등록하고 목록을 확인합니다.
 

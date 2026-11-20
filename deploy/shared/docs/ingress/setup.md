@@ -56,7 +56,7 @@ make ingress-check KUBE_CONTEXT="<context>" VIP_BACKENDS=<IP 목록>
 
 **실패 확인:** 표시된 노드·IP·포트 충돌 또는 기존 backend 누락을 해결한 뒤 다시 검사합니다. 검사 실패 상태로 2단계 이후를 진행하지 않습니다.
 
-[조회] 선택한 각 Worker에서 OS 프로세스의 포트 점유도 확인합니다. 실행 위치는 그 Worker이며 [노드 SSH](../infrastructure/access.md#노드-ssh)의 방법으로 실행합니다.
+[조회] 선택한 각 Worker에서 OS 프로세스의 포트 점유도 확인합니다. 실행 위치는 그 Worker이며, 블록을 관리 호스트의 저장소 밖 파일에 저장해 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행)의 `--script`로 전달합니다.
 
 ```bash
 sudo ss -lntp '( sport = :80 or sport = :443 )'

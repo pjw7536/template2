@@ -33,7 +33,7 @@
 | 준비 작업 | 완료 확인 |
 | --- | --- |
 | Traefik을 둘 Worker가 `Ready`이고 cordon·차단 taint가 없음 | `kubectl --context "<context>" get nodes` |
-| 그 Worker의 80·443을 다른 프로세스가 쓰지 않음(Kubernetes Pod의 hostPort 충돌은 `ingress-check`가 확인) | [노드 SSH](../docs/infrastructure/access.md#노드-ssh)로 `sudo ss -lntp '( sport = :80 or sport = :443 )'` |
+| 그 Worker의 80·443을 다른 프로세스가 쓰지 않음(Kubernetes Pod의 hostPort 충돌은 `ingress-check`가 확인) | [노드 명령 실행](../docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo ss -lntp "( sport = :80 or sport = :443 )"'` |
 | APP VIP가 Traefik 노드의 80·443으로 전달 | [APP VIP와 LB](../docs/infrastructure/access.md#app-vip와-lb) |
 
 ## 입력

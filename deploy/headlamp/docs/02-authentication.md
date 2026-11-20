@@ -123,7 +123,7 @@ kubectl --context "<context>" -n headlamp get secret headlamp-oidc
 
 Headlamp 로그인 토큰을 Kubernetes API server가 받아들이게 하는 설정입니다. 등록되지 않으면 로그인 후에도 자원 조회가 실패합니다.
 
-[승인] 각 제어면에서 [API server OIDC 인증](../../shared/docs/kubernetes/oidc.md) 문서의 절차를 [노드 SSH](../../shared/docs/infrastructure/access.md#노드-ssh)로 수행합니다. API server가 다시 시작되므로 한 번에 한 대씩 적용하고, 그 제어면이 `Ready`이고 아래 [완료 확인](#2-완료-확인)이 통과한 뒤 다음 제어면으로 갑니다. 적용값은 아래 계약이고 CA 파일은 [TLS·CA 준비](01-prepare.md#tlsca-준비)의 CA 묶음입니다.
+[승인] 각 제어면에서 [API server OIDC 인증](../../shared/docs/kubernetes/oidc.md) 문서의 절차를 [노드 명령 실행](../../shared/docs/infrastructure/access.md#노드-명령-실행)으로 수행합니다. API server가 다시 시작되므로 한 번에 한 대씩 적용하고, 그 제어면이 `Ready`이고 아래 [완료 확인](#2-완료-확인)이 통과한 뒤 다음 제어면으로 갑니다. 적용값은 아래 계약이고 CA 파일은 [TLS·CA 준비](01-prepare.md#tlsca-준비)의 CA 묶음입니다.
 
 ### 1. 적용할 계약
 
