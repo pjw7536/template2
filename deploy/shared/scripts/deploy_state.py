@@ -133,6 +133,17 @@ def decode_stream(text):
     return items
 
 
+def manifest_objects(kube, path):
+    """렌더 결과 파일(YAML·JSON)을 추가 패키지 없이 JSON 객체 목록으로 읽는다. 파일에 적힌 내용만 반환한다.
+
+    `kubectl create --dry-run=client`는 namespace를 생략한 리소스에 현재 context의 기본 namespace(`default`)를 채운다.
+    그러면 Helm 차트처럼 namespace를 적지 않는 리소스를 앱 namespace가 아닌 `default`에서 찾게 된다.
+    빈 병합 patch를 `--local`로 적용하면 클러스터에 묻지 않고 파일 내용을 그대로 출력하므로 생략한 namespace가 비어 있는 채로 남고,
+    `select_desired`가 그 자리에 앱 namespace를 채운다.
+    """
+    return decode_stream(kube(['patch', '--local', '--type=merge', '--patch', '{}', '-o', 'json', '-f', path]))
+
+
 def render_desired(kube, app, context, environ=None):
     """현재 checkout으로 앱의 적용 대상 리소스 목록을 만든다. 렌더 명령은 카탈로그가 선언하며 클러스터를 변경하지 않는다."""
     with tempfile.TemporaryDirectory(prefix='deploy-state-') as directory:
@@ -143,8 +154,7 @@ def render_desired(kube, app, context, environ=None):
         items = []
         for path in files:
             if path.exists() and path.read_text().strip():
-                # YAML·JSON을 추가 패키지 없이 JSON 객체로 바꾼다.
-                items.extend(decode_stream(kube(['create', '--dry-run=client', '--validate=false', '-o', 'json', '-f', path])))
+                items.extend(manifest_objects(kube, path))
         return items
 
 

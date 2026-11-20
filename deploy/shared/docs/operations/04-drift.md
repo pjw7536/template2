@@ -120,7 +120,7 @@ make deploy-record APP=<app> KUBE_CONTEXT="<context>"
 | 표시 | 의미 | 조치 |
 | --- | --- | --- |
 | `DRIFT manifest ... 현재 코드와 다름: <필드>` | 현재 코드를 적용하면 표시된 필드가 바뀜 | 코드가 의도한 최신 상태면 앱 가이드의 `B. 업데이트`로 배포. 클러스터 값이 맞다면 저장소 수정이 필요하므로 보고 |
-| `DRIFT manifest ... 클러스터에 없음` | 코드에 있는 리소스가 배포되지 않았거나 namespace가 없음 | 앱 설치·배포 여부 확인 |
+| `DRIFT manifest ... 클러스터에 없음` | 코드에 있는 리소스가 배포되지 않았거나 namespace가 없음. 리소스는 `<종류>/<namespace>/<이름>`으로 표시하며, 렌더 결과에 namespace가 없는 리소스(Helm 차트 등)는 앱 namespace에서 찾음 | 앱 설치·배포 여부 확인. 표시된 namespace가 앱 namespace와 다르면 입력 env의 `NAMESPACE`를 확인 |
 | `DRIFT manifest ... 적용할 수 없음` | 변경 불가 필드(StatefulSet volumeClaimTemplates, PVC 용량 축소 등) 차이 | 앱 문서의 재생성·이전 절차 확인. 자동으로 삭제·재생성하지 않음 |
 | `WARN manifest replica 수` | 실제 replica가 코드와 다름 | 의도한 운영 조정인지 확인 |
 | `WARN checkout 미커밋 변경` | 관리 호스트에서 앱 파일을 직접 수정함. 이 내용이 비교 기준에 포함됨 | 변경 파일과 내용을 보고. 강제 초기화하지 않음 |

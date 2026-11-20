@@ -2,7 +2,9 @@
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -153,7 +155,7 @@ class ManifestTest(unittest.TestCase):
 
         def kube(args, data=None):
             calls.append(args)
-            if args[0] == 'create':
+            if args[0] == 'patch':
                 return json.dumps({'kind': 'List', 'items': rendered})
             if args[0] == 'apply':
                 self.assertIn('--dry-run=server', args)
@@ -173,6 +175,71 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(findings[-1][0], 'info')
         self.assertIn('리소스 0/1개 일치 (비교 제외: Secret 1)', findings[-1][1])
         self.assertFalse(any(a[0] == 'apply' and '--dry-run=server' not in a for a in calls))
+
+    def test_resources_without_namespace_are_looked_up_in_the_app_namespace(self):
+        # Helm 차트는 namespace를 적지 않는다. 그런 리소스를 default가 아닌 앱 namespace에서 찾아야 한다.
+        account = lambda name, **meta: {'apiVersion': 'v1', 'kind': 'ServiceAccount', 'metadata': {'name': name, **meta}}
+        rendered = [account('scheduler'), account('shared', namespace='default'),
+                    {'apiVersion': 'rbac.authorization.k8s.io/v1', 'kind': 'ClusterRole', 'metadata': {'name': 'reader'}}]
+        cluster = [account('scheduler', namespace='demo'), account('shared', namespace='default'), rendered[2]]
+        sent = {}
+
+        def kube(args, data=None):
+            if args[0] == 'patch':
+                # 파일을 읽는 명령은 클러스터에 묻지 않아야 하고, namespace를 채우는 create를 쓰면 안 된다.
+                self.assertIn('--local', args)
+                return json.dumps({'kind': 'List', 'items': rendered})
+            sent[args[0]] = [item['metadata'].get('namespace') for item in json.loads(data)['items']]
+            return json.dumps({'kind': 'List', 'items': cluster})
+
+        def render(app, context, directory, environ=None):
+            path = Path(directory) / 'demo.yaml'
+            path.write_text('kind: List')
+            return [path]
+
+        with unittest.mock.patch.object(state.app_commands, 'render', side_effect=render):
+            findings = state.manifest_findings(kube, APP, 'ctx', {'ClusterRole'})
+        self.assertEqual(sent, {'apply': ['demo', 'default', None], 'get': ['demo', 'default', None]})
+        self.assertEqual(findings, [('ok', '리소스 3/3개 일치')])
+
+    @unittest.skipUnless(shutil.which('kubectl'), 'kubectl이 없으면 실제 변환을 확인할 수 없습니다.')
+    def test_reading_a_rendered_file_does_not_invent_a_namespace(self):
+        # kubectl의 실제 동작을 확인한다. 클러스터와 kubeconfig 없이 실행된다.
+        manifest = '''---
+# Source: chart/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scheduler
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: shared
+  namespace: default
+---
+apiVersion: example.test/v1
+kind: Widget
+metadata:
+  name: custom
+spec:
+  size: 1
+'''
+
+        def kube(args, data=None):
+            return subprocess.run(['kubectl', *map(str, args)], input=data, capture_output=True, text=True, check=True,
+                                  env={**os.environ, 'KUBECONFIG': os.devnull}).stdout
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'rendered.yaml'
+            path.write_text(manifest)
+            items = state.manifest_objects(kube, path)
+        self.assertEqual([(item['kind'], item['metadata'].get('namespace')) for item in items],
+                         [('ServiceAccount', None), ('ServiceAccount', 'default'), ('Widget', None)])
+        self.assertEqual(items[2]['spec'], {'size': 1})
+        selected, _ = state.select_desired(items, 'demo', set())
+        self.assertEqual([state.resource_key(item) for item in selected],
+                         ['ServiceAccount/demo/scheduler', 'ServiceAccount/default/shared', 'Widget.example.test/demo/custom'])
 
     def test_render_failure_is_reported_as_unknown_not_as_a_crash(self):
         with unittest.mock.patch.object(state.app_commands, 'render', side_effect=ValueError('helm 실행 실패')):
