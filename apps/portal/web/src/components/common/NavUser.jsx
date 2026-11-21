@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom"
 import { BadgeCheck, Bell, ChevronsUpDown, LogOut, MessageSquare } from "lucide-react"
 
-import { useAuth } from "@/lib/auth"
+import { formatProfileName, useAuth } from "@/lib/auth"
 import { buildProfileImageUrl, resolveProfileAvatarId } from "@/lib/profileImage"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -37,7 +37,7 @@ function getInitial(name) {
 /** 다양한 형태의 사용자 입력을 화면 렌더에 필요한 구조로 정규화 */
 function normalizeUser(u) {
   if (!u || typeof u !== "object") return null
-  const name = u.username ?? u.displayName ?? ""
+  const name = formatProfileName(u)
   const email = u.email ?? ""
   const avatarid = resolveProfileAvatarId(u)
   // name/email 둘 다 없으면 렌더 의미가 낮으므로 null 처리

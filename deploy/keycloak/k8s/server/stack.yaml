@@ -180,6 +180,8 @@ spec:
           env:
             - name: KC_DB
               value: postgres
+            - name: KC_FEATURES
+              value: scripts
             - name: KC_DB_URL
               value: jdbc:postgresql://keycloak-postgres:5432/keycloak
             - name: KC_DB_USERNAME
@@ -257,10 +259,17 @@ spec:
               mountPath: /opt/keycloak/data/import/etch-realm.json
               subPath: etch-realm.json
               readOnly: true
+            - name: display-name
+              mountPath: /opt/keycloak/providers/etch-display-name.jar
+              subPath: etch-display-name.jar
+              readOnly: true
       volumes:
         - name: realm
           configMap:
             name: keycloak-realm
+        - name: display-name
+          configMap:
+            name: keycloak-display-name
 ---
 apiVersion: v1
 kind: Service

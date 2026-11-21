@@ -74,6 +74,7 @@ env 파일 키의 의미·형식과 그 밖의 실행 입력은 [환경설정](d
 | 변경 | 실행 |
 | --- | --- |
 | env·chart·이미지 | [변경] `make ops-deploy APP=headlamp KUBE_CONTEXT="<context>"`. 성공 기준은 A-1과 같음 |
+| 사용자 표시 이름 | [변경] [Keycloak 표시용 mapper](../keycloak/README.md#b-업데이트)를 배포한 뒤 같은 env로 `make ops-deploy APP=headlamp KUBE_CONTEXT="<context>"`. 새 로그인에서 사용자 메뉴의 `이름(로그인 ID)`를 확인 |
 | 관리자 추가 | [변경] 운영 env의 `HEADLAMP_ADMINS`에 추가하고 `make headlamp-oidc-setup KUBE_CONTEXT="<context>" HEADLAMP_ENV="<Headlamp env 경로>"` 실행. 성공: `관리자 그룹 가입: <username>`과 `Headlamp OIDC 준비 완료` |
 | 관리자 제거 | [변경] [그룹에서 빼기](docs/02-authentication.md#3-사용할-사람을-그룹에-넣기) |
 | client secret·CA 갱신 | [변경] `make headlamp-oidc-setup KUBE_CONTEXT="<context>"`(성공: `Headlamp OIDC 준비 완료`) 뒤 아래 재시작 블록 |

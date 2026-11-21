@@ -414,6 +414,14 @@ client가 없는 앱은 건너뛰며, `/iam` 그룹이 없으면 Etch Members용
 Keycloak 기본 `username`은 EPID(`userid`)이고, 사내 사람 이름 `username`은 충돌을 피해 `display_name`에 저장합니다.
 예: `userid=90000001`, `loginid=hong.gildong`, `username=홍길동`이면 `username=90000001`, `loginid=hong.gildong`, `display_name=홍길동`으로 저장합니다.
 
+### 로그인 사용자 표시 이름
+
+Keycloak으로 로그인한 사용자의 화면 표시 기본값은 `display_name(loginid)`입니다. 새로 연동하는 앱도 사용자 메뉴와 프로필 요약에 이 형식을 사용합니다. 예를 들어 표시 이름이 홍길동이고 로그인 ID가 `hong.gildong`이면 `홍길동(hong.gildong)`으로 표시합니다. 하나만 있으면 그 값만 표시하고, 둘 다 없으면 앱의 기존 표시 동작을 따릅니다.
+
+계정 식별에는 Keycloak의 기본 `username`(EPID)과 앱별 신원 식별자를 사용합니다. 권한 판단은 앱의 역할·그룹 설정을 따릅니다.
+
+Etch Members와 Airflow는 ID Token으로 받은 두 속성을, Portal은 세션 API에 저장된 이름과 로그인 ID를 조합합니다. Headlamp용 ID Token에는 [배포된 표시용 mapper](../k8s/display-name/etch-display-name.js)가 만든 `etch_display_name`이 포함됩니다. Keycloak의 Preview 기능인 `scripts`로 이 mapper를 실행하며 `username`, `preferred_username`, `sub`, 그룹은 기존 방식으로 발급합니다. 표시용 mapper 원본을 갱신하면 [빌드 스크립트](../k8s/display-name/build.py)로 Kustomize가 마운트할 JAR를 다시 생성합니다.
+
 ### User Profile 권한
 
 정의 원본은 [account-user-profile.json](../k8s/claims/account-user-profile.json)입니다.

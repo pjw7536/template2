@@ -1,0 +1,8 @@
+{
+  "mappers": [
+    {
+      "name": "Etch display name",
+      "fileName": "etch-display-name.js"
+    }
+  ]
+}

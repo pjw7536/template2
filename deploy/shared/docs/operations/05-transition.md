@@ -24,6 +24,7 @@ kubectl --context "<context>" get configmaps -A -l deploy-record -o custom-colum
 | [5. Airflow 이미지에서 DAG 분리](#5-airflow-이미지에서-dag-분리) | 기존 Airflow 설치에 새 이미지나 DAG 폴더를 적용할 경우 |
 | [6. Keycloak과 IAM 설정 확인](#6-keycloak과-iam-설정-확인) | 기존 realm·Headlamp client 또는 IAM 설정을 배포 정의와 맞출 경우 |
 | [7. Zot 이미지 경로 확인](#7-zot-이미지-경로-확인) | Portal 또는 Etch Members의 기존 이미지 경로를 전환할 경우 |
+| [8. SSO 사용자 표시 이름](#8-sso-사용자-표시-이름) | 기존 Portal·Airflow·Headlamp에서 새 SSO 로그인 후 `이름(로그인 ID)`가 표시되지 않는 경우 |
 
 `deploy-record-ingress`는 공용 Traefik 인수 여부를 확인하는 데 사용합니다. 다른 작업은 해당 앱의 배포 기록과 실제 상태로 확인합니다. 적용할 항목이 있으면 시작 전 검사 후 해당 절의 순서대로 진행합니다. Airflow 갱신이 필요하면 [DAG 분리 절차](#5-airflow-이미지에서-dag-분리)에서 기존 DAG 위치를 먼저 확인합니다.
 
@@ -202,6 +203,12 @@ kubectl --context "<context>" -n iam get deployments iam-api iam-web -o 'custom-
 ```
 
 현재 이미지가 Zot의 `portal-api`, `portal-web`, `iam-api`, `iam-web`이면 적용된 상태입니다. [변경] 이전 경로를 쓰는 앱은 [Portal 업데이트](../../../portal/README.md#b-업데이트) 또는 [Etch Members 업데이트](../../../iam/README.md#b-업데이트)를 실행합니다. 배포 명령은 새 경로에 먼저 이미지를 게시하며 이후 rollout과 smoke를 확인합니다. 기존 Zot 이미지는 이전 버전 참조에 사용할 수 있습니다.
+
+## 8. SSO 사용자 표시 이름
+
+[조회] 설치된 Portal·Airflow·Headlamp에 Keycloak으로 다시 로그인해 사용자 메뉴가 `이름(로그인 ID)` 형식인지 확인합니다. 각 앱의 표시와 기존 접근 권한이 확인되면 적용된 상태입니다.
+
+[변경] Headlamp가 대상이면 [Keycloak 가이드 B](../../../keycloak/README.md#b-업데이트)의 표시용 mapper 단계로 Keycloak 서버를 갱신한 뒤 [Headlamp 가이드 B](../../../headlamp/README.md#b-업데이트)의 사용자 표시 이름 단계를 실행합니다. Portal과 Airflow는 각각 [Portal 가이드 B](../../../portal/README.md#b-업데이트)와 [Airflow 가이드 B](../../../airflow/README.md#b-업데이트)의 앱 배포를 실행합니다. 새 로그인에서 사용자 메뉴와 기존 접근 권한을 다시 확인합니다.
 
 ## 완료 확인
 

@@ -66,6 +66,10 @@ def main():
         info = claims_module.user_info({'iss': values['AIRFLOW_OIDC_ISSUER'], 'sub': user['id']},
                                       values['AIRFLOW_OIDC_ISSUER'], 'airflow')
         assert set(stored_roles()[info['username']]) == expected, 'FAB 역할 동기화 실패'
+        attributes = user.get('attributes', {})
+        profile = {key: attributes.get(key, [''])[0] for key in ('display_name', 'loginid')}
+        with opener.open(BASE + '/ui/auth/me', timeout=20) as response:
+            assert json.load(response)['username'] == claims_module.display_label(profile), 'Airflow 사용자 표시 이름 불일치'
         if expected == {'Viewer'}:
             try:
                 opener.open(BASE + '/api/v2/variables?limit=1', timeout=20)

@@ -57,7 +57,7 @@ extraEnvFrom: |
 config:
   core:
     load_examples: 'False'
-    auth_manager: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    auth_manager: keycloak_security.KeycloakAuthManager
     # 실행 용량과 cron 데이터 구간의 의미를 유지한다.
     dags_are_paused_at_creation: 'False'
     parallelism: 32

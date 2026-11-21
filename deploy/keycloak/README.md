@@ -99,6 +99,7 @@ env 파일의 키입니다. 형식과 Discovery 해석은 [환경설정](docs/01
 | `deploy/keycloak/access/catalog.json` | [변경] [선택 절](#선택-sdwt-소속역할-관리-api)의 4·5단계 |
 | SDWT·사용자 CSV | [변경] CSV 경로를 전달해서 A의 배포를 실행하거나 [선택 절](#선택-sdwt-소속역할-관리-api)의 1~3단계 실행 |
 | env의 `postgres-password`·`bootstrap-admin-username`·`bootstrap-admin-password` | [검사] `make keycloak-check KUBE_CONTEXT="<context>"`. env만 바꿔서는 실제 DB·관리자 비밀번호가 바뀌지 않고 검사가 `keycloak-runtime: 기존 Secret과 입력이 다릅니다`로 끝납니다. [기존 Secret과 env가 다른 경우](docs/03-operations.md#기존-secret과-env가-다른-경우)를 따릅니다 |
+| Headlamp 표시용 mapper | [변경] `make keycloak-up KUBE_CONTEXT="<context>"`로 제공자를 먼저 배포합니다. `Keycloak 배포 완료`를 확인한 뒤 [Headlamp 업데이트](../headlamp/README.md#b-업데이트)로 client와 화면 설정을 반영합니다. |
 | 공개 주소 변경 | [승인] 로그인이 재시작되고 모든 앱의 issuer가 바뀝니다. 새 주소와 영향받는 앱을 보여 주고 승인받은 뒤 [공개 인증 주소 변경](docs/03-operations.md#공개-인증-주소-변경) |
 
 ### 선택: SDWT 소속·역할 (관리 API)

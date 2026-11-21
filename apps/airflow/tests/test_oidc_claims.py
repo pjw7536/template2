@@ -41,3 +41,10 @@ class OidcClaimsTests(unittest.TestCase):
         self.assertEqual(first['username'], renamed['username'])
         self.assertTrue(first['username'].startswith('kc_'))
         self.assertLessEqual(len(first['username']), 256)
+
+    def test_display_label_uses_profile_claims(self):
+        self.assertEqual(claims_module.display_label({'display_name': ' 홍길동 ', 'loginid': 'hong.gildong'}),
+                         '홍길동(hong.gildong)')
+        self.assertEqual(claims_module.display_label({'loginid': 'hong.gildong'}), 'hong.gildong')
+        self.assertEqual(claims_module.display_label({'display_name': '홍길동', 'loginid': []}), '홍길동')
+        self.assertEqual(claims_module.display_label({'preferred_username': '90000101'}), '')

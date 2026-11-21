@@ -4,6 +4,16 @@ import hashlib
 import json
 
 
+def display_label(claims):
+    """SSO 프로필에서 FAB 이름 필드에 저장할 표시 문자열을 만들고 길이를 제한합니다."""
+    display_name = claims.get('display_name')
+    login_id = claims.get('loginid')
+    name = display_name.strip() if isinstance(display_name, str) else ''
+    login = login_id.strip() if isinstance(login_id, str) else ''
+    label = f'{name}({login})' if name and login else name or login
+    return label[:256]
+
+
 def user_info(claims, issuer, client_id):
     """신원 형식을 검사하고 조직·다른 client 역할은 권한으로 사용하지 않는다."""
     if claims.get('iss') != issuer or not isinstance(claims.get('sub'), str) or not claims['sub']:

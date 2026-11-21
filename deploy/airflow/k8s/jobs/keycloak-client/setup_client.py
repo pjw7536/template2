@@ -93,12 +93,21 @@ def configure(admin, settings):
                          'claim.name': 'resource_access.' + definition['clientId'] + '.roles',
                          'jsonType.label': 'String', 'multivalued': 'true',
                          'id.token.claim': 'true', 'access.token.claim': 'true', 'userinfo.token.claim': 'false'}}
-    existing = admin.request('GET', path + '/protocol-mappers/models')
-    own = next((item for item in existing if item['name'] == mapper['name']), None)
-    if own:
-        admin.request('PUT', path + '/protocol-mappers/models/' + own['id'], {**mapper, 'id': own['id']})
-    else:
-        admin.request('POST', path + '/protocol-mappers/models', mapper)
+    profile_mappers = [
+        {'name': name, 'protocol': 'openid-connect', 'protocolMapper': 'oidc-usermodel-attribute-mapper',
+         'config': {'user.attribute': name, 'claim.name': name, 'jsonType.label': 'String',
+                    'multivalued': 'false', 'id.token.claim': 'true',
+                    'access.token.claim': 'false', 'userinfo.token.claim': 'false'}}
+        for name in ('display_name', 'loginid')
+    ]
+    endpoint = path + '/protocol-mappers/models'
+    existing = {item['name']: item for item in admin.request('GET', endpoint)}
+    for desired in (mapper, *profile_mappers):
+        own = existing.get(desired['name'])
+        if own:
+            admin.request('PUT', endpoint + '/' + own['id'], {**desired, 'id': own['id']})
+        else:
+            admin.request('POST', endpoint, desired)
     return current['id'], roles
 
 

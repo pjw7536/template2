@@ -139,6 +139,7 @@ Headlamp 로그인 토큰을 Kubernetes API server가 받아들이게 하는 설
 [조회] 현재 env의 issuer와 client ID는 `make -s headlamp-setup-env`로 확인합니다.
 
 Keycloak의 `sub`는 사용자 ID이며 username(EPID)·`loginid`·이름과 다릅니다.
+Headlamp의 사용자 메뉴에는 ID Token의 `etch_display_name`을 표시합니다. Keycloak은 `display_name`과 `loginid`를 `이름(로그인 ID)`로 조합합니다. 두 속성이 모두 비어 있으면 Headlamp가 기본 이름 클레임을 사용합니다.
 ID Token의 그룹 `/headlamp-admins`는 API server에서 `headlamp:/headlamp-admins`가 되며 Helm의 `server-headlamp-admin` ClusterRoleBinding과 일치해야 합니다. 이 바인딩이 그룹에 `cluster-admin`을 부여합니다.
 SSO 주소를 바꾸면 Headlamp env와 모든 API server의 issuer·CA를 함께 맞춥니다. 다른 앱의 `--oidc-*`·인증 설정은 덮어쓰지 않습니다. 다른 issuer·client의 설정이 이미 있으면 멈추고 보고합니다.
 

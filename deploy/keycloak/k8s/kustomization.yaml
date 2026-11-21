@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: etch-sso
 resources:
   - server/stack.yaml
+  - display-name
 images:
   - name: keycloak-internal
     newName: repository.samsungds.net/proxy-docker-quay.io/keycloak/keycloak

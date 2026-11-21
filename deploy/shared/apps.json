@@ -40,6 +40,7 @@
       "commands": {
         "static": [
           ["bash", "deploy/shared/scripts/validate_env_profile_keys.sh", "keycloak", "prod"],
+          ["python3", "deploy/keycloak/k8s/display-name/build.py", "--check"],
           ["kubectl", "kustomize", "deploy/keycloak/k8s"]
         ],
         "check": ["python3", "deploy/keycloak/scripts/up.py", "--context", "{context}", "--env", "{KEYCLOAK_ENV}", "--check-only"],

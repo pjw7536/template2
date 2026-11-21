@@ -272,7 +272,8 @@ class FakeAdmin:
     def __init__(self, client=None, group=False, users=('alice',)):
         self.client, self.group, self.users, self.calls = copy.deepcopy(client), group, users, []
         if self.client:
-            self.client['protocolMappers'][0].setdefault('id', 'mapper-id')
+            for index, mapper in enumerate(self.client['protocolMappers']):
+                mapper.setdefault('id', 'mapper-id' if not index else f'mapper-{index}')
         self.writes = []
 
     def call(self, method, path, data=None, query=None):
@@ -319,6 +320,15 @@ class OidcSetupTest(unittest.TestCase):
         admin = FakeAdmin(client=self.client, group=True)
         manage.register_client(admin, self.values)
         self.assertEqual(admin.writes, [])
+
+    def test_existing_client_adds_the_display_only_mapper(self):
+        self.client['protocolMappers'].pop()
+        admin = FakeAdmin(client=self.client, group=True)
+        manage.register_client(admin, self.values)
+        [(method, path, mapper)] = admin.writes
+        self.assertEqual((method, path), ('POST', 'clients/cid/protocol-mappers/models'))
+        self.assertEqual(mapper['config']['claim.name'], 'etch_display_name')
+        self.assertEqual(mapper['config']['id.token.claim'], 'true')
 
     def test_existing_client_drift_is_repaired_without_overwriting_its_secret_or_other_mappers(self):
         self.client['redirectUris'] = ['https://old.test/oidc-callback']

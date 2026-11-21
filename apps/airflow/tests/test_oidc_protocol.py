@@ -45,9 +45,11 @@ class OidcProtocolTests(unittest.TestCase):
                                      client_kwargs={'scope': 'openid profile email', 'code_challenge_method': 'S256'})
         self.remote.fetch_jwk_set = Mock(return_value={'keys': [jwk]})
         self.register = Mock(return_value=object())
+        self.update_user = Mock(return_value=True)
         view = KeycloakOAuthView()
         view.appbuilder = SimpleNamespace(sm=SimpleNamespace(oauth_remotes={'keycloak': self.remote},
-                                                              auth_user_oauth=self.register),
+                                                              auth_user_oauth=self.register,
+                                                              update_user=self.update_user),
                                           get_url_for_index='/success', get_url_for_login='/login')
         self.app.add_url_rule('/start', endpoint='start', view_func=lambda: self.remote.authorize_redirect('http://localhost/callback'))
         self.app.add_url_rule('/callback', endpoint='callback', view_func=lambda: view.oauth_authorized('keycloak'))
@@ -82,6 +84,34 @@ class OidcProtocolTests(unittest.TestCase):
     def test_valid_token_registers_default_viewer(self):
         self.assertEqual(self.callback().location, '/success')
         self.assertEqual(self.register.call_args.args[0]['role_keys'], ['Viewer'])
+
+    def test_valid_token_updates_only_the_display_profile_of_existing_user(self):
+        from keycloak_security import KeycloakAuthManager
+        from airflow.providers.fab.auth_manager.fab_auth_manager import FabAuthManager
+        from starlette.applications import Starlette
+        from starlette.responses import PlainTextResponse
+        from starlette.routing import Route
+        from starlette.testclient import TestClient
+        user = SimpleNamespace(id=7, username='kc_' + 'a' * 64, first_name='기존', last_name='이름')
+        user.get_name = lambda: user.username
+        self.register.return_value = user
+        self.assertEqual(self.callback(overrides={'display_name': '홍길동', 'loginid': 'hong.gildong'}).location,
+                         '/success')
+        self.update_user.assert_called_once_with(user)
+        self.assertEqual((user.first_name, user.last_name), ('홍길동(hong.gildong)', ''))
+        with patch.object(FabAuthManager, 'deserialize_user', return_value=user):
+            manager = KeycloakAuthManager()
+            def endpoint(_request):
+                return PlainTextResponse(manager.deserialize_user({'sub': '7'}).get_name())
+
+            app = Starlette(routes=[Route('/airflow/ui/auth/me', endpoint), Route('/airflow/api/v2/dags', endpoint)])
+            middleware, options = manager.get_fastapi_middlewares()[-1]
+            app.add_middleware(middleware, **options)
+            with TestClient(app) as client:
+                self.assertEqual(client.get('/airflow/ui/auth/me').text, '홍길동(hong.gildong)')
+                self.assertEqual(client.get('/airflow/api/v2/dags').text, user.username)
+            self.assertEqual(user.username, 'kc_' + 'a' * 64)
+            self.assertEqual(manager.serialize_user(user), {'sub': '7'})
 
     def test_invalid_tokens_never_register(self):
         cases = [dict(overrides={'iss': 'https://wrong.test'}), dict(overrides={'aud': 'portal'}),

@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: tailwind-local
 resources:
   - keycloak.yaml
+  - ../../../deploy/keycloak/k8s/display-name
 configMapGenerator:
   - name: keycloak-realm
     files:

@@ -102,6 +102,7 @@ def settings(result, example=False):
         {'name': 'OIDC_CALLBACK_URL', 'value': f'https://{host}/oidc-callback'},
         {'name': 'OIDC_USE_PKCE', 'value': 'true'},
         {'name': 'OIDC_USE_ACCESS_TOKEN', 'value': 'false'},
+        {'name': 'HEADLAMP_CONFIG_ME_USERNAME_PATH', 'value': 'etch_display_name,preferred_username,upn,username,name'},
     ]
     if ca:
         values['env'].append({'name': 'SSL_CERT_FILE', 'value': '/etc/headlamp-ca/ca.crt'})
@@ -183,6 +184,11 @@ def oidc_client(values):
             'protocolMapper': 'oidc-group-membership-mapper', 'consentRequired': False,
             'config': {'claim.name': 'groups', 'full.path': 'true',
                        'id.token.claim': 'true', 'access.token.claim': 'false', 'userinfo.token.claim': 'true'},
+        }, {
+            'name': 'etch-display-name', 'protocol': 'openid-connect',
+            'protocolMapper': 'script-etch-display-name.js',
+            'config': {'claim.name': 'etch_display_name', 'jsonType.label': 'String',
+                       'id.token.claim': 'true', 'access.token.claim': 'false', 'userinfo.token.claim': 'false'},
         }],
     }
 
@@ -252,13 +258,13 @@ def configure_client(admin, definition):
         for name in sorted(missing):
             admin.call('PUT', f'{scopes_path}/{scopes[name]}')
 
-    mapper, = definition['protocolMappers']
     mappers_path = f'{path}/protocol-mappers/models'
-    current_mapper = next((item for item in admin.call('GET', mappers_path)
-                           if item['name'] == mapper['name'] and item['protocol'] == mapper['protocol']), None)
-    if current_mapper is None:
-        admin.call('POST', mappers_path, mapper)
-    else:
+    current_mappers = {(item['name'], item.get('protocol')): item for item in admin.call('GET', mappers_path)}
+    for mapper in definition['protocolMappers']:
+        current_mapper = current_mappers.get((mapper['name'], mapper['protocol']))
+        if current_mapper is None:
+            admin.call('POST', mappers_path, mapper)
+            continue
         config = {**(current_mapper.get('config') or {}), **mapper['config']}
         desired_mapper = {**mapper, 'id': current_mapper['id'], 'config': config}
         if any(current_mapper.get(key) != value for key, value in desired_mapper.items()):

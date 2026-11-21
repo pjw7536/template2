@@ -97,6 +97,8 @@ def headlamp_login(username, password):
     with opener.open(Request(form.action, data=urlencode(fields).encode()), timeout=30) as response:
         response.read()
         assert '/headlamp/auth?cluster=main' in response.url, 'Headlamp OIDC callback 실패'
+    with opener.open(headlamp.URL + 'clusters/main/me', timeout=30) as response:
+        assert json.load(response)['username'] == f'{headlamp.TEST_DISPLAY_NAMES[username]}({username})'
     # 실제 사용자 쿠키를 Headlamp 프록시로 전달해 API server OIDC와 RBAC까지 검사합니다.
     target = headlamp.URL + 'clusters/main/api/v1/namespaces'
     if username == 'platform-admin':

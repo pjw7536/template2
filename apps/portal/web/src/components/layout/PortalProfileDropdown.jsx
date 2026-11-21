@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { buildBackendUrl } from "@/lib/api"
-import { useAuth } from "@/lib/auth"
+import { formatProfileName, useAuth } from "@/lib/auth"
 import { buildProfileImageUrl, resolveProfileAvatarId } from "@/lib/profileImage"
 
 const PROFILE_MENU_ITEM_CLASS_NAME = "px-4 py-2.5 text-base"
@@ -32,7 +32,7 @@ export function PortalProfileDropdown({
   const navigate = useNavigate()
   const { user, logout } = useAuth()
 
-  const displayName = user?.username || "John Doe"
+  const displayName = formatProfileName(user) || user?.email || "사용자"
   const email = user?.email || "john.doe@example.com"
   const profileAvatarId = resolveProfileAvatarId(user)
   const avatarSrc = buildProfileImageUrl(profileAvatarId)

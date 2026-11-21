@@ -19,6 +19,7 @@ URL = 'https://localhost:8443/headlamp/'
 CA = RUNTIME / 'headlamp-tls/ca.crt'
 KEY = RUNTIME / 'headlamp-tls/tls.key'
 CONTROL_PLANE = CLUSTER + '-control-plane'
+TEST_DISPLAY_NAMES = {'platform-admin': '로컬 관리자', 'platform-viewer': '로컬 조회 사용자'}
 
 
 def values(address='127.0.0.1'):
@@ -147,11 +148,16 @@ def realm_up(creds):
     group = next(item for item in groups if item['name'] == 'headlamp-admins')
     for username, key in [('platform-admin', 'HEADLAMP_ADMIN_PASSWORD'), ('platform-viewer', 'HEADLAMP_VIEWER_PASSWORD')]:
         users = admin.request('GET', admin.root + '/users?' + urlencode({'username': username, 'exact': 'true'}))
+        names = {'display_name': [TEST_DISPLAY_NAMES[username]], 'loginid': [username]}
         if not users:
             admin.request('POST', admin.root + '/users', {'username': username, 'enabled': True,
                           'firstName': 'Local', 'lastName': username, 'email': username + '@localhost.test',
+                          'attributes': names,
                           'credentials': [{'type': 'password', 'value': creds[key], 'temporary': False}]})
             users = admin.request('GET', admin.root + '/users?' + urlencode({'username': username, 'exact': 'true'}))
+        attributes = users[0].get('attributes', {})
+        if any(attributes.get(name) != value for name, value in names.items()):
+            admin.request('PUT', admin.root + '/users/' + users[0]['id'], {'attributes': {**attributes, **names}})
         if username == 'platform-admin':
             admin.request('PUT', admin.root + '/users/' + users[0]['id'] + '/groups/' + group['id'])
 

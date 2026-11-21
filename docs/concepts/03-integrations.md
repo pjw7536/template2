@@ -43,6 +43,8 @@ Portal은 Keycloak에 authorization code + PKCE로 로그인합니다. 로컬 Ke
 `local/adfs_dummy`는 Keycloak의 upstream IdP와 업무 외부계를 대체합니다. 앱 역할과 SDWT 그룹은
 검증된 Keycloak 토큰에서 세션에 저장하며, DB 권한 행으로 대체하지 않습니다.
 
+새 앱을 연결할 때는 [로그인 사용자 표시 이름](../../deploy/keycloak/docs/02-configure.md#로그인-사용자-표시-이름)의 공통 규칙을 따릅니다.
+
 설정: `OIDC_*`, `ALLOWED_REDIRECT_HOSTS` ([설정 그룹](../reference/01-configuration.md#주요-설정-그룹))
 
 ## RAG

@@ -95,6 +95,9 @@ class ClientRegistrationTests(unittest.TestCase):
         self.assertEqual(updates[0]['attributes']['existing'], 'keep')
         self.assertNotIn('secret', updates[0])
         self.assertTrue(any(method == 'PUT' and path.endswith('/mapper-uuid') for method, path, _ in self.calls))
+        added = {payload['config']['claim.name'] for method, path, payload in self.calls
+                 if method == 'POST' and path.endswith('/protocol-mappers/models')}
+        self.assertEqual(added, {'display_name', 'loginid'})
 
     def test_secret_mismatch_stops_before_mutation(self):
         def respond(method, path, payload=None):
