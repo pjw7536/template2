@@ -11,7 +11,7 @@ description: 사내 관리 호스트에서 Kubernetes 앱(공용 Traefik·Keyclo
 1. [배포 가이드](../../../deploy/README.md): 단계 표시, 실행 규칙, 하지 않는 일, 설치 순서, 공통 시작, 공용 TLS·CA 묶음·Traefik·빌드 도구, 마무리, 장애 조회.
 2. 대상 앱 가이드(아래 표): 모든 앱이 같은 절을 가진다. `한눈에 보기` → `구성` → `사전 준비` → `입력` → `A. 최초 설치` → `B. 업데이트` → `C. 배포 후 확인` → `문제 해결과 멈춤 조건` → `상세 문서`.
 3. 가이드가 가리킬 때만 상세 문서를 연다. 클러스터 밖 단계는 [접근 경로](../../../deploy/shared/docs/infrastructure/access.md)의 해당 절을 연다.
-   Keycloak·Etch Members에는 [공용 인증 입력 준비](../../../deploy/shared/docs/operations/02-deploy.md#공용-인증-입력-준비)에서 생성한 경로를 사용한다. `identity.env`가 지정되어 있거나 운영 중인 경우에 이 절을 실행한다.
+   Keycloak·Etch Members는 프로젝트 루트에 `identity.env.local`이 있거나 외부 인증 입력을 지정받으면 [공용 인증 입력 준비](../../../deploy/shared/docs/operations/02-deploy.md#공용-인증-입력-준비)에서 생성한 경로를 사용한다.
 4. checkout을 갱신해 commit이 바뀌었으면 [전환 런북](../../../deploy/shared/docs/operations/05-transition.md)의 `적용 여부 확인`을 먼저 실행하고, 미적용이면 그 문서의 순서를 요청한 배포보다 먼저 수행한다.
 
 ## 진행 방법

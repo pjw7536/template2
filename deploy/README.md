@@ -124,7 +124,7 @@
    git log -1 --oneline
    ```
    대상 배포 경로(`deploy/<app>`)나 소스(`apps/<app>`)에 미커밋 변경이 있으면 그 앱은 멈추고 보고합니다.
-   Keycloak 또는 Etch Members 작업에서 `identity.env`를 사용 중이거나 지정받았다면 [공용 인증 입력 준비](shared/docs/operations/02-deploy.md#공용-인증-입력-준비)를 먼저 실행합니다. 생성한 경로를 이어지는 검사·전환·배포·대조에 전달합니다.
+   Keycloak 또는 Etch Members 작업에서 프로젝트 루트에 `identity.env.local`이 있거나 외부 인증 입력을 지정받았다면 [공용 인증 입력 준비](shared/docs/operations/02-deploy.md#공용-인증-입력-준비)를 먼저 실행합니다. 생성한 경로를 이어지는 검사·전환·배포·대조에 전달합니다.
    갱신으로 commit이 바뀌었으면 [전환 런북](shared/docs/operations/05-transition.md)의 `적용 여부 확인`을 먼저 실행합니다.
 2. [조회] context와 노드를 확인합니다. 선택한 context 이름이 목록에 없거나 노드 조회가 실패하면 [Kubernetes API](shared/docs/infrastructure/access.md#kubernetes-api) 절로 확인합니다.
    ```bash

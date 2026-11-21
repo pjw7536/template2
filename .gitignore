@@ -12,6 +12,8 @@
 !.yarn/releases
 !.yarn/versions
 .env
+/identity.env.local
+/identity.env.generated/
 pm_spider/
 # testing
 /coverage

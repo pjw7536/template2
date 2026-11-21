@@ -14,13 +14,17 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'deploy/shared/scripts'))
 from runtime import is_placeholder  # noqa: E402
 
-OIDC_KEYS = ('CORP_OIDC_CLIENT_ID', 'CORP_OIDC_CLIENT_SECRET')
+SECRET_KEY = 'CORP_OIDC_CLIENT_SECRET'
+OIDC_KEYS = ('CORP_OIDC_CLIENT_ID', SECRET_KEY)
 ADMIN_KEY = 'IAM_PLATFORM_ADMIN_USERNAMES'
 ENV_KEY = re.compile(r'[A-Za-z_][A-Za-z0-9_-]*')
 
 
-def read_env(path):
+def read_env(path, *, private=False):
     """env를 실행하지 않고 읽으며 중복이나 형식 오류에는 값이 아닌 줄 번호를 표시합니다."""
+    mode = path.stat().st_mode
+    if not stat.S_ISREG(mode) or (private and mode & 0o077):
+        raise ValueError(f'{path.name}의 파일 형식과 권한(비밀 env 예: 0600)을 확인하세요.')
     values = {}
     try:
         lines = path.read_text().splitlines()
@@ -39,12 +43,20 @@ def read_env(path):
 def prepare(identity, keycloak_base, iam_base):
     """모든 입력을 검사하고 비공개 임시 파일 두 개를 준비한 뒤 고정 경로에 교체합니다."""
     identity = identity.resolve()
-    if identity.is_relative_to(ROOT):
-        raise ValueError('인증 운영 입력은 checkout 밖에 두세요.')
-    metadata = identity.stat()
-    if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o077:
-        raise ValueError('identity.env는 그룹·다른 사용자 권한이 없는 일반 파일이어야 합니다(예: 0600).')
-    selected = read_env(identity)
+    shared_input = identity == ROOT / 'identity.env'
+    if identity.is_relative_to(ROOT) and not shared_input:
+        raise ValueError('checkout 안의 인증 운영 입력은 프로젝트 루트의 identity.env를 사용하세요.')
+    selected = read_env(identity, private=not shared_input)
+    if shared_input:
+        if SECRET_KEY in selected:
+            raise ValueError('CORP_OIDC_CLIENT_SECRET은 루트의 identity.env.local에 입력하세요.')
+        private_input = identity.with_name('identity.env.local')
+        if not private_input.is_file():
+            raise ValueError('루트에 권한 0600의 identity.env.local을 준비하세요.')
+        private_values = read_env(private_input, private=True)
+        if set(private_values) - {SECRET_KEY}:
+            raise ValueError('identity.env.local에는 CORP_OIDC_CLIENT_SECRET만 입력하세요.')
+        selected.update(private_values)
     if set(selected) - {*OIDC_KEYS, ADMIN_KEY}:
         raise ValueError('identity.env에는 사내 OIDC client ID·secret과 IAM 관리자 EPID 키만 사용할 수 있습니다.')
     for key in OIDC_KEYS:

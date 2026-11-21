@@ -1,6 +1,7 @@
 """공용 인증 입력의 덮어쓰기 범위, 권한, 실패 시 보존을 검증합니다."""
 
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
@@ -42,6 +43,29 @@ class IdentityEnvTests(unittest.TestCase):
                                             'CORP_OIDC_CLIENT_SECRET': 'opaque=a#b'})
         self.assertEqual(read_env(iam), {**read_env(self.iam), 'IAM_PLATFORM_ADMIN_USERNAMES': '101,102'})
         self.assertEqual(inputs, [path.read_bytes() for path in (self.identity, self.keycloak, self.iam)])
+
+    def test_make_uses_checkout_root_by_default(self):
+        checkout = self.identity.parent
+        for name in ('Makefile', 'deploy/iam/scripts/prepare_identity_env.py', 'deploy/shared/scripts/runtime.py'):
+            destination = checkout / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / name, destination)
+        command = ['make', '-s', 'identity-env-prepare', f'KEYCLOAK_ENV={self.keycloak}', f'IAM_ENV={self.iam}']
+        result = subprocess.run(command, cwd=checkout, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('identity.env.local에 입력하세요', result.stderr)
+
+        self.identity.write_text('CORP_OIDC_CLIENT_ID=new-id\nIAM_PLATFORM_ADMIN_USERNAMES=101,102\n')
+        self.identity.chmod(0o644)
+        private_input = checkout / 'identity.env.local'
+        private_input.write_text('CORP_OIDC_CLIENT_SECRET=opaque=a#b\n')
+        private_input.chmod(0o600)
+        result = subprocess.run(command, cwd=checkout, capture_output=True, text=True, check=True)
+        generated = checkout / 'identity.env.generated'
+        self.assertEqual(result.stdout.splitlines(), [f'KEYCLOAK_ENV={generated / "keycloak.env"}',
+                                                     f'IAM_ENV={generated / "iam.env"}'])
+        self.assertEqual(read_env(generated / 'keycloak.env')['CORP_OIDC_CLIENT_SECRET'], 'opaque=a#b')
+        self.assertEqual(read_env(generated / 'iam.env')['IAM_PLATFORM_ADMIN_USERNAMES'], '101,102')
 
     def test_optional_admin_override_and_invalid_input_keep_previous_files(self):
         required = 'CORP_OIDC_CLIENT_ID=another-id\nCORP_OIDC_CLIENT_SECRET=another-secret\n'
