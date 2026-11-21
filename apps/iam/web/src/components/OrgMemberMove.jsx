@@ -96,7 +96,7 @@ export function MemberMoveProvider({ org, editing = false, onChanged, disabled, 
           </DialogHeader>
           {pending ? (
             <div className="flex flex-col gap-3">
-              <p className="text-sm"><span className="font-semibold">{displayName(pending.user)}</span>{attr(pending.user, "loginid") && ` · ${attr(pending.user, "loginid")}`}</p>
+              <p className="text-sm font-semibold">{displayName(pending.user)}</p>
               <p className="text-sm text-muted-foreground">현재 소속: {pending.from.team} / {pending.from.line} / {pending.from.name}</p>
               <fieldset className="flex min-w-0 flex-col gap-2" disabled={busy}>
                 <legend className="mb-2 text-sm font-medium">이동할 소속</legend>

@@ -89,7 +89,7 @@ const PermissionCell = memo(function PermissionCell({ user, column, access, onCh
           <button
             type="button"
             className="relative inline-flex size-8 items-center justify-center rounded-md bg-background transition hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-            aria-label={`${user.username} ${column.label} 권한, ${summary}. 권한 상세 및 변경 메뉴 열기`}
+            aria-label={`${displayName(user)} ${column.label} 권한, ${summary}. 권한 상세 및 변경 메뉴 열기`}
           >
             {isPending ? (
               <RefreshCw className="size-3.5 animate-spin" />

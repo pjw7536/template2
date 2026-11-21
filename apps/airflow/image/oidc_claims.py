@@ -5,13 +5,13 @@ import json
 
 
 def display_label(claims):
-    """SSO 프로필에서 FAB 이름 필드에 저장할 표시 문자열을 만들고 길이를 제한합니다."""
+    """SSO 프로필에서 화면 표시 문자열을 만들고 길이를 제한합니다."""
     display_name = claims.get('display_name')
     login_id = claims.get('loginid')
     name = display_name.strip() if isinstance(display_name, str) else ''
     login = login_id.strip() if isinstance(login_id, str) else ''
     label = f'{name}({login})' if name and login else name or login
-    return label[:256]
+    return label[:512]
 
 
 def user_info(claims, issuer, client_id):

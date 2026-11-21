@@ -105,6 +105,7 @@ triggerer:
     enabled: false
 migrateDatabaseJob:
   useHelmHooks: true
+  args: [bash, -ec, 'airflow db migrate && exec python /opt/airflow/keycloak_profile.py']
   resources:
     requests: {cpu: '100m', memory: 256Mi}
     limits: {cpu: '1', memory: 1Gi}

@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest"
 
-import { membersByJobTitle, summarizeMembers } from "./users.js"
+import { displayName, displayProfile, membersByJobTitle, summarizeMembers } from "./users.js"
+
+it("구성원 표시 이름과 로그인 ID를 조합하고 EPID를 표시값으로 사용하지 않습니다", () => {
+  expect(displayName({ username: "90000001", attributes: { display_name: ["홍길동"], loginid: ["gildong.hong"] } }))
+    .toBe("홍길동(gildong.hong)")
+  expect(displayName({ username: "90000001", attributes: { loginid: ["gildong.hong"] } })).toBe("gildong.hong")
+  expect(displayProfile({ display_name: "홍길동" }, { attributes: { loginid: ["gildong.hong"] } }))
+    .toEqual({ display_name: "홍길동", loginid: "gildong.hong" })
+  expect(displayName({ username: "90000001" })).toBe("-")
+})
 
 const member = (id, grade) => ({ user: { id, attributes: grade === undefined ? {} : { grdName: [grade] } } })
 

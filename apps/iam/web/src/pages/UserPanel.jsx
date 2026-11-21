@@ -82,7 +82,7 @@ export default function UserPanel({ user, org, orgUuid, onClose, onSaved, onGrou
         <div className="min-w-0">
           <CardTitle className="truncate">{displayName(user)}</CardTitle>
           <CardDescription className="truncate">
-            {[attr(user, "loginid"), user.username && `EPID ${user.username}`, attr(user, "deptname")].filter(Boolean).join(" · ")}
+            {[user.username && `EPID ${user.username}`, attr(user, "deptname")].filter(Boolean).join(" · ")}
           </CardDescription>
         </div>
         <Button variant="ghost" size="icon" className="size-8" onClick={onClose} aria-label="닫기">

@@ -6,7 +6,7 @@ LABEL org.opencontainers.image.title="Etch Airflow" \
 # DAG는 이미지에 넣지 않는다. 배포가 Worker의 DAG 폴더를 /opt/airflow/dags에 읽기 전용으로 연결한다.
 COPY --chown=airflow:0 plugins/ /opt/airflow/plugins/
 COPY --chown=airflow:0 image/bootstrap-user.py /opt/airflow/bootstrap-user.py
-COPY --chown=airflow:0 image/webserver_config.py image/keycloak_security.py image/oidc_claims.py /opt/airflow/
+COPY --chown=airflow:0 image/webserver_config.py image/keycloak_security.py image/oidc_claims.py image/keycloak_profile.py /opt/airflow/
 # parser와 LocalExecutor task가 DAG 폴더의 공통 모듈을 동일하게 읽는다.
 ENV PYTHONPATH=/opt/airflow:/opt/airflow/dags
 # SSO가 사용하는 기존 이미지 의존성의 호환 범위를 빌드 시 확인한다.

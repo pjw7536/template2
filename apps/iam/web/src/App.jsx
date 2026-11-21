@@ -3,8 +3,9 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { buildColumns } from "@/lib/access"
 import { loadCatalog, loadOrgRoot } from "@/lib/api"
-import { canManageUsers, keycloak, realm } from "@/lib/keycloak"
+import { canManageUsers, keycloak, loadDisplayProfile, realm } from "@/lib/keycloak"
 import { buildOrg } from "@/lib/plan"
+import { displayProfile, formatDisplayName } from "@/lib/users"
 import { cn } from "@/lib/utils"
 import OrgPage from "./pages/OrgPage"
 import PermissionsPage from "./pages/PermissionsPage"
@@ -21,8 +22,9 @@ const TAB_KEYS = TABS.map(([key]) => key)
 
 export default function App() {
   const allowed = canManageUsers()
-  const { display_name: displayName, loginid: loginId } = keycloak.idTokenParsed ?? {}
-  const profileLabel = displayName && loginId ? `${displayName}(${loginId})` : displayName || loginId
+  const [fetchedProfile, setFetchedProfile] = useState(null)
+  const { display_name: displayName, loginid: loginId } = displayProfile(keycloak.idTokenParsed, keycloak.tokenParsed)
+  const profileLabel = formatDisplayName(displayProfile({ display_name: displayName, loginid: loginId }, fetchedProfile))
   const [tab, setTab] = useState(() => (TAB_KEYS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "permissions"))
   const [orgRoot, setOrgRoot] = useState(undefined)
   const [orgUuid, setOrgUuid] = useState("")
@@ -48,6 +50,15 @@ export default function App() {
   useEffect(() => {
     if (allowed) reload()
   }, [allowed, reload])
+
+  useEffect(() => {
+    if (!keycloak.authenticated || (displayName && loginId)) return
+    let active = true
+    loadDisplayProfile({ display_name: displayName, loginid: loginId }).then((profile) => {
+      if (active) setFetchedProfile(profile)
+    })
+    return () => { active = false }
+  }, [displayName, loginId])
 
   const select = (key) => {
     setTab(key)

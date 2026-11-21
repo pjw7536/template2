@@ -564,7 +564,10 @@ def build_image(settings, path, *, builder='auto', containerd_namespace='default
     require(build['INSTALL_BIGDATAQUERY_ODBC'] != 'true' or build['BIGDATAQUERY_ODBC_DEB_URL'], 'ODBC 설치에는 BIGDATAQUERY_ODBC_DEB_URL이 필요합니다.')
     root = BASE.parents[1]
     source = root / 'apps/airflow'
-    require(all((source / name).exists() for name in ('image/Dockerfile.dependencies', 'image/Dockerfile', 'image/bootstrap-user.py', 'image/webserver_config.py', 'image/keycloak_security.py', 'image/oidc_claims.py', 'plugins')),
+    require(all((source / name).exists() for name in (
+        'image/Dockerfile.dependencies', 'image/Dockerfile', 'image/bootstrap-user.py', 'image/webserver_config.py',
+        'image/keycloak_security.py', 'image/oidc_claims.py', 'image/keycloak_profile.py', 'plugins',
+    )),
             '이미지 빌드 소스(apps/airflow)가 없습니다. 저장소 전체 checkout에서 실행하세요.')
     command = image_build_command(builder, containerd_namespace, containerd_address, buildkit_host, prefix)
     final = settings['AIRFLOW_IMAGE_REPOSITORY'] + ':' + settings['AIRFLOW_IMAGE_TAG']

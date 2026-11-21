@@ -445,7 +445,7 @@ function NodeRepresentatives({ name, title, people, loading, error, onSelectPers
       {loading ? <span className="text-muted-foreground">불러오는 중…</span>
         : error ? <span className="text-muted-foreground">확인 불가</span>
         : holders.length ? holders.map(({ user, sdwt }) => (
-          <button key={user.id} type="button" aria-haspopup="dialog" title={[displayName(user), attr(user, "loginid")].filter(Boolean).join(" · ")}
+          <button key={user.id} type="button" aria-haspopup="dialog" title={displayName(user)}
             className="w-full truncate rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={(event) => onSelectPerson(user, sdwt, event)}>{displayName(user)}</button>
         )) : <span className="text-muted-foreground">미등록</span>}
@@ -583,7 +583,6 @@ function SdwtDetail({ sdwt, team, org, orgUuid, people, loading, error, editing,
         className="min-w-0 flex-1 truncate rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         title={entry.user.username} onClick={(event) => onSelectPerson(entry.user, sdwt, event)}>
         {displayName(entry.user)}
-        {attr(entry.user, "loginid") && <span className="ml-1 text-xs text-muted-foreground">{attr(entry.user, "loginid")}</span>}
       </button>
       <span className="w-12 shrink-0 truncate text-xs text-muted-foreground" title={attr(entry.user, "grdName")}>{attr(entry.user, "grdName") || "-"}</span>
       <span className="w-14 shrink-0 truncate text-xs" title={attr(entry.user, "job_title")}>{attr(entry.user, "job_title") || "-"}</span>
@@ -675,7 +674,7 @@ function PersonDetails({ person, editing, onClose, onSaved, onRefresh, triggerRe
     }
   }
   const fields = person ? [
-    ["이름", displayName(user)],
+    ["이름", attr(user, "display_name")],
     ["직급", attr(user, "grdName")],
     ...(!editing ? [["직책", attr(user, "job_title")]] : []),
     ["EPID", user.username],

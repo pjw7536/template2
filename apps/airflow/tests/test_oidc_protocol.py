@@ -44,12 +44,17 @@ class OidcProtocolTests(unittest.TestCase):
                                      id_token_signing_alg_values_supported=['RS256'],
                                      client_kwargs={'scope': 'openid profile email', 'code_challenge_method': 'S256'})
         self.remote.fetch_jwk_set = Mock(return_value={'keys': [jwk]})
-        self.register = Mock(return_value=object())
+        self.register = Mock(return_value=SimpleNamespace(id=7, first_name='', last_name=''))
         self.update_user = Mock(return_value=True)
+        self.session = Mock()
+        save = patch('keycloak_security.save_display_name')
+        self.save_display_name = save.start()
+        self.addCleanup(save.stop)
         view = KeycloakOAuthView()
         view.appbuilder = SimpleNamespace(sm=SimpleNamespace(oauth_remotes={'keycloak': self.remote},
                                                               auth_user_oauth=self.register,
-                                                              update_user=self.update_user),
+                                                              update_user=self.update_user,
+                                                              session=self.session),
                                           get_url_for_index='/success', get_url_for_login='/login')
         self.app.add_url_rule('/start', endpoint='start', view_func=lambda: self.remote.authorize_redirect('http://localhost/callback'))
         self.app.add_url_rule('/callback', endpoint='callback', view_func=lambda: view.oauth_authorized('keycloak'))
@@ -92,14 +97,18 @@ class OidcProtocolTests(unittest.TestCase):
         from starlette.responses import PlainTextResponse
         from starlette.routing import Route
         from starlette.testclient import TestClient
-        user = SimpleNamespace(id=7, username='kc_' + 'a' * 64, first_name='기존', last_name='이름')
+        user = SimpleNamespace(id=7, username='kc_' + 'a' * 64,
+                               first_name='홍길동(hong.gildong)', last_name='')
         user.get_name = lambda: user.username
         self.register.return_value = user
-        self.assertEqual(self.callback(overrides={'display_name': '홍길동', 'loginid': 'hong.gildong'}).location,
+        self.assertEqual(self.callback(overrides={'display_name': '홍길동', 'loginid': 'hong.gildong',
+                                                  'given_name': '길동', 'family_name': '홍'}).location,
                          '/success')
         self.update_user.assert_called_once_with(user)
-        self.assertEqual((user.first_name, user.last_name), ('홍길동(hong.gildong)', ''))
-        with patch.object(FabAuthManager, 'deserialize_user', return_value=user):
+        self.assertEqual((user.first_name, user.last_name), ('길동', '홍'))
+        self.save_display_name.assert_called_once_with(self.session, 7, '홍길동(hong.gildong)')
+        with patch.object(FabAuthManager, 'deserialize_user', return_value=user), \
+                patch('keycloak_security.display_names', return_value={user.username: '홍길동(hong.gildong)'}):
             manager = KeycloakAuthManager()
             def endpoint(_request):
                 return PlainTextResponse(manager.deserialize_user({'sub': '7'}).get_name())

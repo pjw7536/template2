@@ -108,6 +108,7 @@ make airflow-check KUBE_CONTEXT="<context>"
 | DAG 파일만 | [검사] `make airflow-dags-check KUBE_CONTEXT="<context>"`로 바뀔 파일을 본 뒤 [변경] `make airflow-dags-sync KUBE_CONTEXT="<context>"`. 같은 이름은 덮어쓰고 폴더에만 있는 파일은 남김. 재배포 없음. 덮어쓸 DAG가 실행 중이면 먼저 일시정지([방법](docs/04-operations.md#dag-파일-추가수정삭제)) |
 | 이미지 소스(`apps/airflow/image`·`apps/airflow/plugins`의 플러그인·패키지·ODBC, `build.env`) | [승인] tag가 자동으로 바뀌어 실행 중 작업이 중단되고 운영 중인 DB에 migration이 실행됩니다. [배포 전 준비](docs/04-operations.md#이미지-업데이트)를 마치고 승인받은 뒤 `make ops-deploy APP=airflow KUBE_CONTEXT="<context>"` |
 | env(알림·OIDC·runtime 값) | [변경] `make ops-deploy APP=airflow KUBE_CONTEXT="<context>"`. Pod는 배포 마지막에 재시작됨. 저장소 밖 env는 같은 명령에 `AIRFLOW_ENV=<경로>`를 붙임 |
+| Keycloak 사용자 표시 이름 | [변경] `make ops-deploy APP=airflow KUBE_CONTEXT="<context>"`. 배포 성공 뒤 다시 로그인해 [사용자 메뉴와 FAB Users](docs/03-deploy.md#로그인과-앱-간-호출-확인)를 확인 |
 | 인증서 | [변경] [공용 TLS 등록](../README.md#공용-tls-등록)의 명령으로 `airflow.etch.samsungds.net`을 다시 등록 |
 | 사내 CA 교체 | [변경] [사내 CA 묶음](../README.md#사내-ca-묶음)을 다시 만들고 [OIDC CA ConfigMap](docs/03-deploy.md#oidc-ca-configmap)을 갱신한 뒤 env 행의 배포를 실행 |
 | DB 비밀번호·Fernet 키 불일치 | [조회] `make airflow-check KUBE_CONTEXT="<context>"`의 오류로 다른 값을 확인하고 [Secret 복원](docs/04-operations.md#2-secret-복원)의 조건을 대조. DB를 만들 때의 원래 값이 든 env가 없으면 [운영 입력 파일](../shared/docs/infrastructure/access.md#운영-입력-파일) 절로 준비. 새 값을 만들지 않음 |

@@ -529,7 +529,7 @@ class ImageBuildIntegrationTests(unittest.TestCase):
                 assert not os.environ.get(key), key
             assert os.environ['PIP_NO_INPUT'] == '1'
             assert os.environ['PIP_DISABLE_PIP_VERSION_CHECK'] == '1'
-            for filename in ('bootstrap-user.py', 'webserver_config.py', 'keycloak_security.py', 'oidc_claims.py'):
+            for filename in ('bootstrap-user.py', 'webserver_config.py', 'keycloak_security.py', 'oidc_claims.py', 'keycloak_profile.py'):
                 assert Path('/opt/airflow', filename).is_file(), filename
             subprocess.run([sys.executable, '-m', 'venv', '/tmp/airflow-check-venv'], check=True, capture_output=True)
             inspect_options = (

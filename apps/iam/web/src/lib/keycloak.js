@@ -1,5 +1,7 @@
 import Keycloak from "keycloak-js"
 
+import { displayProfile } from "./users"
+
 /** 런타임 설정(public/config.js)을 읽어 Keycloak 로그인과 Admin API 호출을 제공합니다. */
 const config = window.__IAM_CONFIG__ ?? {}
 
@@ -17,6 +19,14 @@ export function initLogin() {
 /** Etch Members를 쓰려면 realm-management의 manage-users role이 필요합니다. */
 export function canManageUsers() {
   return keycloak.hasResourceRole("manage-users", "realm-management")
+}
+
+/** 이전 토큰에 비어 있는 표시 속성을 자기 프로필에서 확인합니다. */
+export async function loadDisplayProfile(initial) {
+  const profile = displayProfile(initial, await keycloak.loadUserInfo().catch(() => null))
+  if ((profile.display_name && profile.loginid) || !canManageUsers() || !keycloak.subject) return profile
+  const ownUser = await admin(`/users/${encodeURIComponent(keycloak.subject)}`).catch(() => null)
+  return displayProfile(profile, ownUser)
 }
 
 export class AdminError extends Error {

@@ -155,7 +155,7 @@ SDWT S의 데이터            : min(앱 역할, org_roles 중 sdwt:S:<등급>�
 런타임 설정은 `public/config.js`의 `window.__IAM_CONFIG__`(`keycloakUrl`, `realm`, `clientId`)입니다.
 개발 기본값은 `http://localhost:8180`, realm `portal`, client `iam`입니다. 운영 배포는 IAM·Keycloak env의 공개 설정을 `config.js` ConfigMap으로 만들어 웹 컨테이너에 마운트합니다.
 
-상단에는 ID 토큰의 `display_name`과 `loginid`를 `이름(로그인 ID)` 형식으로 표시합니다. 하나만 있으면 있는 값만 표시합니다. 권한 탭과 구성원 상세에서는 이름, 로그인 ID, EPID를 각각의 필드로 구분합니다.
+상단과 권한·조직 화면의 구성원 표기는 `display_name(loginid)` 형식입니다. 로그인 헤더는 ID Token, Access Token, UserInfo에서 확인한 표시 속성을 쓰고, 필요한 값이 비어 있으면 플랫폼 관리자의 자기 계정 프로필을 조회합니다. 하나만 있으면 그 값만 표시합니다. 구성원 상세의 이름, 로그인 ID, EPID는 각각의 필드에서 확인할 수 있습니다.
 
 ## 업무 부하
 

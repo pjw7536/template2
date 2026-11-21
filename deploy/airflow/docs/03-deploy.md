@@ -13,7 +13,7 @@
 
 로그인한 사용자는 기본적으로 Viewer입니다. 추가 권한이 필요한 운영자에게만 Keycloak의 `airflow` client 역할 User 또는 Admin을 부여합니다.
 조직별 그룹은 사용하지 않으며 역할을 제거하면 다음 로그인부터 Viewer로 돌아갑니다. 기존 세션 이관과 통합 로그아웃은 지원 범위가 아닙니다.
-Keycloak 로그인 사용자 메뉴에는 `display_name(loginid)`를 표시합니다. 최신 프로필은 로그인할 때 반영합니다. FAB 계정 username은 이전과 같이 issuer와 subject에서 계산합니다.
+Keycloak으로 로그인한 사용자는 사용자 메뉴와 FAB 사용자 목록·상세·편집 화면의 User Name에서 `display_name(loginid)`로 표시됩니다. 배포의 DB migration Job이 표시값용 `etch_keycloak_profile` 테이블을 준비하고, 새 로그인에서 해당 사용자 ID의 표시값과 `given_name`·`family_name`을 반영합니다. 이전 배포에서 First Name에 저장된 합성 이름도 새 로그인에서 실제 이름으로 갱신합니다. FAB 계정 username은 issuer와 subject에서 계산합니다.
 
 ### OIDC env 입력
 
@@ -107,7 +107,7 @@ make airflow-keycloak-client KEYCLOAK_ENV=<관리자 계정 env의 절대 경로
 배포를 마친 뒤 Airflow 로그인 화면의 Keycloak 버튼으로 확인합니다. 브라우저가 필요한 항목은 [화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법을 따릅니다.
 
 - 기본 사용자는 DAG 조회만 되고 관리 작업은 거부됩니다. 관리자는 관리 화면에 접근합니다.
-- 사용자 메뉴에 이름과 로그인 ID가 표시되며, 한 항목만 제공되면 그 항목을 확인합니다.
+- 사용자 메뉴와 FAB Users의 User Name에 이름과 로그인 ID가 함께 표시됩니다. First Name과 Last Name에서 사내 SSO의 이름과 성을 확인합니다.
 - User·Admin 역할 제거 후 새 로그인에서 Viewer로 돌아갑니다.
 - 잘못된 토큰·다른 issuer·만료 토큰은 Viewer로 처리되지 않고 로그인에 실패합니다.
 - Portal → Airflow 호출은 DB 계정으로 `/auth/token`에서 JWT를 받아 API v2에 Bearer로 전달합니다. Airflow → Portal 호출은 trigger token을 사용합니다. 두 방향을 따로 검증합니다.

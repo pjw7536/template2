@@ -4,7 +4,23 @@ export const ORIGINAL_DEPARTMENT_MAX_LENGTH = 128
 
 export const attr = (user, name) => user?.attributes?.[name]?.[0] ?? ""
 
-export const displayName = (user) => attr(user, "display_name") || "-"
+export function displayProfile(...sources) {
+  const read = (key) => {
+    for (const source of sources) {
+      const value = source?.[key] ?? source?.attributes?.[key]
+      const text = Array.isArray(value) ? value[0] : value
+      if (typeof text === "string" && text.trim()) return text.trim()
+    }
+    return ""
+  }
+  return { display_name: read("display_name"), loginid: read("loginid") }
+}
+
+export function formatDisplayName({ display_name: name, loginid }) {
+  return name && loginid ? `${name}(${loginid})` : name || loginid
+}
+
+export const displayName = (user) => formatDisplayName(displayProfile(user)) || "-"
 
 /** 실제 소속 구성원을 사용자별로 한 번만 세고, 인사 직급별 인원을 집계합니다. */
 export function summarizeMembers(people) {
