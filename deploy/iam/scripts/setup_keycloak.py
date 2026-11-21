@@ -143,16 +143,28 @@ class Setup:
         self.group_roles = self.missing_roles(self.admins, "groups", "role-mappings")
         if self.group_roles:
             self.plan.append("플랫폼 관리자 그룹의 관리 역할 연결")
-        self.join = []
-        for username in self.usernames:
-            user = one(api.pages("users", username=username, exact="true"), "username", username)
-            if user is None:
-                raise SetupError(f"IAM_PLATFORM_ADMIN_USERNAMES의 기존 사용자 '{username}'를 찾지 못했습니다.")
-            user_path = f"users/{segment(user['id'])}/groups"
-            if self.admins is None or not one(api.pages(user_path), "id", self.admins["id"]):
-                self.join.append(user_path)
-        if self.join:
-            self.plan.append(f"지정한 기존 사용자 {len(self.join)}명을 플랫폼 관리자 그룹에 추가")
+        self.bootstrap_user_path = None
+        if not self.usernames or self.has_admin_members():
+            return
+        if len(self.usernames) != 1:
+            raise SetupError("IAM_PLATFORM_ADMIN_USERNAMES에는 최초 관리자 EPID를 한 명만 지정하세요.")
+        username = self.usernames[0]
+        user = one(api.pages("users", username=username, exact="true"), "username", username)
+        if user is None:
+            raise SetupError(f"IAM_PLATFORM_ADMIN_USERNAMES의 기존 사용자 '{username}'를 찾지 못했습니다.")
+        if user.get("enabled") is False:
+            raise SetupError("IAM_PLATFORM_ADMIN_USERNAMES에 지정한 최초 관리자 계정이 비활성화되어 있습니다.")
+        self.bootstrap_user_path = f"users/{segment(user['id'])}/groups"
+        self.plan.append("지정한 기존 사용자를 최초 플랫폼 관리자로 추가")
+
+    def has_admin_members(self):
+        if self.admins is None:
+            return False
+        members = self.api.call("GET", f"groups/{segment(self.admins['id'])}/members",
+                                query={"max": 1, "briefRepresentation": "true"})
+        if not isinstance(members, list):
+            raise SetupError("플랫폼 관리자 그룹의 구성원 목록 응답이 올바르지 않습니다.")
+        return bool(members)
 
     def missing_roles(self, item, collection, mapping):
         assigned = set()
@@ -249,9 +261,9 @@ class Setup:
         self.apply_permissions(base)
 
     def apply_members(self):
-        """역할·정책·카탈로그가 반영된 뒤 지정된 기존 사용자만 추가합니다."""
-        for user_path in self.join:
-            self.api.call("PUT", f"{user_path}/{segment(self.admins['id'])}")
+        """역할·정책·카탈로그 반영 후 그룹이 여전히 비어 있으면 최초 관리자를 추가합니다."""
+        if self.bootstrap_user_path and not self.has_admin_members():
+            self.api.call("PUT", f"{self.bootstrap_user_path}/{segment(self.admins['id'])}")
 
     def apply_permissions(self, base):
         api = self.api

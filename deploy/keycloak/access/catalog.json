@@ -80,6 +80,18 @@
       "group": "/headlamp-admins",
       "name": "Headlamp",
       "infra": true
+    },
+    {
+      "group": "/grafana-operations-viewers",
+      "name": "Grafana 서버 상태",
+      "level": "viewer",
+      "optional": true
+    },
+    {
+      "group": "/grafana-business-viewers",
+      "name": "Grafana 업무 대시보드",
+      "level": "viewer",
+      "optional": true
     }
   ]
 }

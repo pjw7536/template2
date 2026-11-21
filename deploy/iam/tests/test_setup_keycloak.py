@@ -25,6 +25,7 @@ class SetupTests(unittest.TestCase):
 
     def test_member_selection_requires_an_exact_existing_username(self):
         api = Mock()
+        api.call.return_value = []
         api.pages.side_effect = [
             [{"id": "root", "path": "/iam"}],
             [{"id": "admins", "name": "platform-admins"}],
@@ -35,7 +36,41 @@ class SetupTests(unittest.TestCase):
                 self.assertRaisesRegex(iam.SetupError, "기존 사용자 'named-user'"):
             task.inspect_group()
         api.pages.assert_called_with("users", username="named-user", exact="true")
-        api.call.assert_not_called()
+        api.call.assert_called_once_with("GET", "groups/admins/members", query={"max": 1, "briefRepresentation": "true"})
+
+    def test_nonempty_group_ignores_deployment_admin_input(self):
+        api = Mock()
+        api.pages.side_effect = [
+            [{"id": "root", "path": "/iam"}],
+            [{"id": "admins", "name": "platform-admins"}],
+        ]
+        api.call.return_value = [{"id": "another-user"}]
+        task = iam.Setup(api, PUBLIC_URL, None, ["stale-epid", "old-epid"])
+        with patch.object(task, "missing_roles", return_value=[]):
+            task.inspect_group()
+        task.apply_members()
+        self.assertEqual(task.plan, [])
+        self.assertEqual(api.pages.call_count, 2)
+        self.assertEqual(api.call.call_args_list, [
+            call("GET", "groups/admins/members", query={"max": 1, "briefRepresentation": "true"}),
+        ])
+
+    def test_empty_group_bootstraps_one_user_and_observes_membership_before_writing(self):
+        api = Mock()
+        api.pages.side_effect = [
+            [{"id": "root", "path": "/iam"}],
+            [{"id": "admins", "name": "platform-admins"}],
+            [{"id": "initial-user", "username": "named-user", "enabled": True}],
+        ]
+        api.call.side_effect = [[], [], None, [{"id": "initial-user"}]]
+        task = iam.Setup(api, PUBLIC_URL, None, ["named-user"])
+        with patch.object(task, "missing_roles", return_value=[]):
+            task.inspect_group()
+        task.apply_members()
+        task.apply_members()
+        self.assertEqual([item for item in api.call.call_args_list if item.args[0] == "PUT"], [
+            call("PUT", "users/initial-user/groups/admins"),
+        ])
 
     def test_public_url_must_be_an_origin(self):
         for value in ("https://iam.example.test/subpath", "https://iam.example.test?next=/", "http://iam.example.test"):

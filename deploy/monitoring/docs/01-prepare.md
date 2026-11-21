@@ -144,13 +144,12 @@ kubectl --context "<context>" -n monitoring get secret monitoring-grafana-admin 
 
 ### port-forward로만 접속하기
 
-공용 HTTPS 경로를 사용하지 않을 때는 [운영 입력 파일](../../shared/docs/infrastructure/access.md#운영-입력-파일)의 env에서 아래 네 키를 이 값으로 둡니다. 공용 TLS 등록과 Traefik 준비는 생략하며, Grafana를 사용한다면 관리자 Secret은 여전히 필요합니다.
+공용 HTTPS 경로를 사용하지 않을 때는 [운영 입력 파일](../../shared/docs/infrastructure/access.md#운영-입력-파일)의 env에서 아래 값을 지정합니다. Grafana는 로컬 관리자 로그인을 사용합니다.
 
 ```dotenv
 INGRESS_ENABLED=false
 GRAFANA_HOST=
-PROMETHEUS_HOST=
-ALERTMANAGER_HOST=
+GRAFANA_SSO_ENABLED=false
 ```
 
 [조회] 이 모드에서는 공개 주소가 없으므로 API server가 Service로 전달하는 경로로 Grafana와 Prometheus의 상태를 조회합니다. 터미널을 점유하지 않고 바로 끝납니다.

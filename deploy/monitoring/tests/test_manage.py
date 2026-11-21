@@ -20,6 +20,7 @@ def settings():
     """실제 비밀값 없이 테스트용 서버 입력을 만든다."""
     result = manage.read_env(manage.BASE / 'env/k8s.env')
     result['NODE_NAME'] = 'worker-one'
+    result['GRAFANA_SSO_ENABLED'] = 'false'
     for key in ('DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY'):
         result[key] = 'mirror.test/' + key.lower()
     return result
@@ -40,7 +41,8 @@ def rendered_fixture(components=('prometheus', 'alertmanager', 'grafana'), names
     return '\n---\n'.join(documents)
 
 
-def fake_render(data, directory, chart, values_file=None, components=('prometheus', 'alertmanager', 'grafana'), names=None):
+def fake_render(data, directory, chart, values_file=None, keycloak_env=None,
+                components=('prometheus', 'alertmanager', 'grafana'), names=None):
     """클러스터 흐름 검사에 최종 렌더·스토리지 파일 계약을 제공한다."""
     content = rendered_fixture(components, names)
     (Path(directory) / 'monitoring.yaml').write_text(content)
@@ -178,8 +180,8 @@ class MonitoringTests(unittest.TestCase):
             manage.validate(data)
 
     def test_ingress_requires_dns_and_tls_and_can_be_disabled_for_local(self):
-        for changes in ({'GRAFANA_HOST': 'https://portal.test/path'}, {'PROMETHEUS_HOST': ''}, {'ALERTMANAGER_HOST': 'invalid'}, {'GRAFANA_HOST': settings()['PROMETHEUS_HOST']},
-                        {'INGRESS_ENABLED': 'yes'}):
+        for changes in ({'GRAFANA_HOST': 'https://portal.test/path'}, {'GRAFANA_HOST': ''}, {'INGRESS_ENABLED': 'yes'},
+                        {'GRAFANA_SSO_ENABLED': 'true', 'INGRESS_ENABLED': 'false'}, {'GRAFANA_OIDC_REALM': 'master'}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 manage.validate({**settings(), **changes})
         data = {**settings(), 'INGRESS_ENABLED': 'false', 'GRAFANA_HOST': '', 'PROMETHEUS_HOST': '', 'ALERTMANAGER_HOST': ''}
@@ -294,13 +296,36 @@ class MonitoringTests(unittest.TestCase):
                 return json.dumps({'metadata': {'name': 'monitoring-storage-prepare-test'}})
             return ''
 
-        with patch.object(manage, 'run', run), patch.object(manage, 'render', fake_render):
-            manage.deploy(settings(), 'test-context', Path('chart.tgz'))
+        fixture_admin = object()
+
+        def register_oidc(*args):
+            calls.append(['oidc', 'test-context'])
+            return fixture_admin, 'credential-revision'
+
+        def register_org(*args):
+            calls.append(['business-org', 'test-context'])
+            return 2
+
+        def publish_catalog(api):
+            self.assertIs(api, fixture_admin)
+            calls.append(['members-catalog', 'test-context'])
+
+        with patch.object(manage, 'run', run), patch.object(manage, 'render', fake_render), \
+                patch.object(manage.grafana_sso, 'ensure_oidc', side_effect=register_oidc), \
+                patch.object(manage.grafana_sso, 'prepare_business_org', side_effect=register_org), \
+                patch.object(manage.grafana_sso, 'publish_members_catalog', side_effect=publish_catalog):
+            manage.deploy({**settings(), 'GRAFANA_SSO_ENABLED': 'true'}, 'test-context', Path('chart.tgz'))
         apply = next(i for i, call in enumerate(calls) if 'apply' in call)
         install = next(i for i, call in enumerate(calls) if 'upgrade' in call)
         self.assertLess(apply, install)
         prepare = next(i for i, call in enumerate(calls) if 'job' in call and 'monitoring-storage-prepare-test' in call)
         self.assertLess(prepare, apply)
+        self.assertLess(calls.index(['oidc', 'test-context']), install)
+        business_org = calls.index(['business-org', 'test-context'])
+        reload_grafana = next(i for i, call in enumerate(calls) if 'patch' in call and 'deployment/monitoring-grafana' in call)
+        self.assertLess(install, business_org)
+        self.assertLess(business_org, reload_grafana)
+        self.assertLess(reload_grafana, calls.index(['members-catalog', 'test-context']))
         self.assertTrue(all('test-context' in call for call in calls))
         self.assertFalse(any('delete' in call or '--atomic' in call for call in calls))
         waits = [call for call in calls if '--for=create' in call]
@@ -337,8 +362,8 @@ class MonitoringTests(unittest.TestCase):
                 calls, applied = [], []
                 active = tuple(name for name in manage.VOLUMES if name not in disabled)
 
-                def render(data, directory, chart, values_file=None):
-                    return fake_render(data, directory, chart, values_file, active)
+                def render(data, directory, chart, values_file=None, keycloak_env=None):
+                    return fake_render(data, directory, chart, values_file, keycloak_env, components=active)
 
                 def run(args, data=None):
                     calls.append(args)
@@ -501,7 +526,7 @@ class MonitoringTests(unittest.TestCase):
                 flags = manage.render(settings(), directory, chart, override)
                 components = manage.rendered_components((Path(directory) / 'monitoring.yaml').read_text())
                 self.assertEqual(set(components), set(manage.VOLUMES) - disabled)
-                self.assertEqual(flags[-1], override)
+                self.assertEqual(flags[flags.index(override) - 1], '-f')
                 resources = json.loads((Path(directory) / 'storage.json').read_text())['items']
                 volumes = [item for item in resources if item['kind'] == 'PersistentVolume']
                 self.assertEqual(len(volumes), len(components))
@@ -537,6 +562,7 @@ class MonitoringTests(unittest.TestCase):
             raise
         data = settings()
         data['IMAGE_PULL_SECRET'] = 'registry-login'
+        data['GRAFANA_SSO_ENABLED'] = 'true'
         with tempfile.TemporaryDirectory() as directory:
             manage.render(data, directory, chart)
             images = (Path(directory) / 'images.txt').read_text().splitlines()
@@ -550,10 +576,9 @@ class MonitoringTests(unittest.TestCase):
             self.assertIn('volumeName: monitoring-monitoring-prometheus', rendered)
             self.assertIn('volumeName: monitoring-monitoring-alertmanager', rendered)
             self.assertIn('name: registry-login', rendered)
-            self.assertEqual(rendered.count('kind: Ingress\n'), 3)
-            self.assertEqual(manage.ingress_hosts(data, rendered), {data[key] for key in ('GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST')})
-            for component in manage.VOLUMES:
-                self.assertIn('path: /', rendered)
+            self.assertEqual(rendered.count('kind: Ingress\n'), 1)
+            self.assertEqual(manage.ingress_hosts(data, rendered), {data['GRAFANA_HOST']})
+            self.assertIn('path: /', rendered)
             self.assertIn('root_url = https://grafana.etch.samsungds.net/', rendered)
             self.assertIn('serve_from_sub_path = false', rendered)
             for component in ('prometheus', 'alertmanager'):
@@ -562,6 +587,17 @@ class MonitoringTests(unittest.TestCase):
                 self.assertIn(f'url: http://monitoring-{component}.monitoring:', rendered)
             self.assertIn('pathPrefix: "/"', rendered)
             self.assertNotIn('admin-password:', rendered)
+            self.assertIn('org_mapping = /grafana-operations-viewers:1:Viewer /grafana-business-viewers:Etch-Business:Viewer', rendered)
+            self.assertIn('role_attribute_strict = true', rendered)
+            self.assertIn('groups_attribute_path = groups', rendered)
+            self.assertIn('GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET', rendered)
+            self.assertIn('name: monitoring-grafana-oidc', rendered)
+            self.assertNotIn('default_home_dashboard_path', rendered)
+            datasource = next(doc for doc in rendered.split('\n---\n') if 'name: monitoring-grafana-datasource' in doc)
+            self.assertIn('type: prometheus', datasource)
+            self.assertIn('type: alertmanager', datasource)
+            self.assertTrue('orgId:' not in datasource or 'orgId: 1' in datasource)
+            self.assertEqual(rendered.count('orgId: 1'), 1)
 
 
 if __name__ == '__main__':

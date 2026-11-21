@@ -30,15 +30,31 @@
 ## 화면과 지표 확인
 
 [가이드 C](../README.md#c-배포-후-확인)가 통과한 뒤 화면과 실제 지표를 확인합니다. 주소는 [서비스 접속 주소](../../shared/docs/infrastructure/services.md#서비스-접속-주소)에 있습니다.
-세 주소의 HTTPS 응답은 `make monitoring-smoke KUBE_CONTEXT="<context>"`가 확인합니다. 로그인과 화면 내용은 [화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법으로 확인합니다.
+Grafana HTTPS 응답은 `make monitoring-smoke KUBE_CONTEXT="<context>"`로 확인합니다. 로그인과 화면 내용은 [화면 기능 확인](../../shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법으로 확인합니다.
 
 | 확인할 곳 | 정상 기준 |
 | --- | --- |
-| Grafana | 관리자 계정으로 로그인. 기본 홈 [전체 서버 · 리소스 추세](#전체-서버-추세-대시보드)에 서버별 그래프와 상태 표가 표시됨 |
+| Grafana | 서버 상태 조회 계정은 운영 조직의 [전체 서버 · 리소스 추세](#전체-서버-추세-대시보드)를 조회합니다. 업무 권한만 받은 계정은 업무 조직과 등록된 업무 대시보드에 접근합니다. 두 권한이 없는 계정은 SSO 로그인에서 거부됩니다 |
 | Prometheus `/targets` | 수집 대상이 `UP`. `DOWN`인 대상은 endpoint·권한·통신 확인 |
 | Alertmanager | 웹 화면과 현재 알림 설정 확인. 기본값은 외부 통지 없음 |
 
 확인한 실제 배치·접속 결과는 [서비스·앱 배치](../../shared/docs/infrastructure/services.md#앱별-배치와-스토리지-선언)에 기록합니다.
+
+### Grafana 조직별 조회 권한
+
+Etch Members의 **권한** 매트릭스에서 **Grafana 서버 상태**와 **Grafana 업무 대시보드**를 독립적으로 부여하거나 회수합니다. Grafana는 Keycloak 그룹을 기존 운영 조직(ID `1`)과 업무 조직 `Etch-Business`의 Viewer로 매핑합니다. 기존 Grafana 세션의 권한을 확인할 때는 로그아웃한 뒤 다시 로그인합니다.
+
+업무 조직에는 공유할 업무 대시보드와 해당 업무 전용 데이터 소스를 등록합니다. 업무 데이터 소스를 Helm으로 공급할 때는 업무 조직의 실제 `orgId`를 지정합니다. 운영 Prometheus·Alertmanager는 조직 `1`에서 사용합니다. Grafana 로컬 서버 관리자 계정은 업무 조직 준비와 복구에 사용합니다.
+
+이전 Helm release에서 생성한 Prometheus·Alertmanager 공용 Ingress는 업그레이드 후 사라집니다. 별도 라우팅을 만든 환경에서는 배포 후 남은 경로를 확인합니다.
+
+[조회] Grafana와 수집·알림 서비스의 경로를 확인합니다.
+
+```bash
+kubectl --context "<context>" -n monitoring get ingress,svc
+kubectl --context "<context>" get --raw "/api/v1/namespaces/monitoring/services/monitoring-prometheus:9090/proxy/api/v1/targets"
+kubectl --context "<context>" get --raw "/api/v1/namespaces/monitoring/services/monitoring-alertmanager:9093/proxy/-/healthy"
+```
 
 ## 알림 설정
 
@@ -47,7 +63,7 @@ Alertmanager의 기본 수신자는 `null`이며 외부 통지를 보내지 않�
 
 ## 전체 서버 추세 대시보드
 
-Grafana 기본 홈은 **전체 서버 · 리소스 추세**입니다. `/d/servers-overview`로 직접 열거나 Dashboards에서 제목으로 찾습니다. 개인·조직에서 별도 홈 대시보드를 지정했다면 그 설정이 우선합니다.
+운영 조직에서 **전체 서버 · 리소스 추세**를 `/d/servers-overview`로 직접 열거나 Dashboards에서 제목으로 찾습니다. 로컬 port-forward 전용 모드에서는 이 대시보드가 Grafana 기본 홈입니다.
 
 - 상단 요약: 등록 서버 수, 수집 정상·중단 수, CPU·메모리·디스크 최고 사용률.
 - 비교 추세: 선택 서버의 CPU·메모리·디스크 사용률과 네트워크 처리량을 같은 시간축에서 비교. 범례에서 서버별 현재값·최댓값 확인.

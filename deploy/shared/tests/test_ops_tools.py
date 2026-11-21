@@ -226,9 +226,10 @@ EXPECTED_COMMANDS = {
                         '--push-env R/deploy/registry/env/push-initial.env',
     ('airflow', 'check'): 'deploy/airflow/scripts/up.py --context ctx --env R/deploy/airflow/env/k8s.env --tls-source  --check-only',
     ('airflow', 'up'): 'deploy/airflow/scripts/up.py --context ctx --env R/deploy/airflow/env/k8s.env --tls-source ',
-    ('monitoring', 'check'): 'deploy/monitoring/scripts/manage.py check --env R/deploy/monitoring/env/k8s.env',
+    ('monitoring', 'check'): 'deploy/monitoring/scripts/manage.py check --env R/deploy/monitoring/env/k8s.env '
+                             '--keycloak-env R/deploy/keycloak/env/prod.env',
     ('monitoring', 'up'): 'deploy/monitoring/scripts/manage.py deploy --context ctx --env R/deploy/monitoring/env/k8s.env '
-                          '--grafana-env R/deploy/monitoring/env/grafana-initial.env',
+                          '--grafana-env R/deploy/monitoring/env/grafana-initial.env --keycloak-env R/deploy/keycloak/env/prod.env',
     ('headlamp', 'check'): 'deploy/headlamp/scripts/manage.py check --env R/deploy/headlamp/env/k8s.env',
     ('headlamp', 'up'): 'deploy/headlamp/scripts/manage.py deploy --context ctx --env R/deploy/headlamp/env/k8s.env',
     ('ftp', 'check'): 'deploy/ftp/scripts/up.py --check-only',

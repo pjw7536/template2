@@ -47,6 +47,7 @@
 | Airflow 배포 | `https://airflow.etch.samsungds.net` 로그인 | 노드 Ready·배포 미확인 | [Airflow 배포](../../../airflow/docs/03-deploy.md) | 운영자 |
 | Airflow DAG 공유 폴더 전환 | `khinfow01`의 공유 디렉터리를 스케줄러와 DAG Processor에 마운트 | 저장소 선언. 기존 DAG 백업·파일 이관·운영 재배포 및 목록 확인 필요 | [공유 폴더 전환](../../../airflow/docs/04-operations.md#공유-폴더-전환) | 운영자 |
 | Monitoring 배포 | Grafana·Prometheus·Alertmanager 접속과 지표 수집 | 저장 폴더 준비는 사용자 확인. 배포·접속 미확인 | [Monitoring 설치](../../../monitoring/README.md) | 운영자 |
+| Grafana SSO와 조회 권한 | Members 권한 두 개, Grafana 조직 분리, Prometheus·Alertmanager 공용 Ingress 제거 | 저장소 선언. 운영 적용과 조직별 SSO 접근 미확인 | [Monitoring 운영 안내](../../../monitoring/docs/02-operations.md#grafana-조직별-조회-권한) | 운영자 |
 | Headlamp 배포 | `https://headlamp.etch.samsungds.net` 로그인 | 배치 노드·배포 미확인 | [Headlamp 설치](../../../headlamp/README.md) | 운영자 |
 | IAM 웹 공개 | [IAM 공개 주소](services.md#서비스-접속-주소)에서 웹과 업무 부하 API 제공 | 주소 확정. 웹·API 이미지와 Kubernetes 정의는 저장소에 있음. 운영 Zot 게시, DNS·TLS·Ingress와 로그인 확인 필요 | [IAM 배포](../../../iam/README.md#c-배포-후-확인) | 미확인 |
 | FTP 배포 | 대상 노드에 `etch.io/ftp-enabled=true` 라벨과 송수신 성공 | 대상 노드·배포 미확인 | [FTP 설치](../../../ftp/docs/01-install.md) | 운영자 |

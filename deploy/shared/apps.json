@@ -154,27 +154,29 @@
       "sourcePaths": [],
       "deployPath": "deploy/monitoring",
       "localPath": "local/monitoring",
-      "dependsOn": ["ingress"],
+      "dependsOn": ["ingress", "keycloak"],
       "inputs": [
         {"variable": "MONITORING_ENV", "default": "deploy/monitoring/env/k8s.env"},
-        {"variable": "MONITORING_GRAFANA_ENV", "default": "deploy/monitoring/env/grafana-initial.env", "record": false}
+        {"variable": "MONITORING_GRAFANA_ENV", "default": "deploy/monitoring/env/grafana-initial.env", "record": false},
+        {"variable": "KEYCLOAK_ENV", "default": "deploy/keycloak/env/prod.env", "record": false}
       ],
-      "hosts": ["GRAFANA_HOST", "PROMETHEUS_HOST", "ALERTMANAGER_HOST"],
+      "hosts": ["GRAFANA_HOST"],
+      "caBundle": "keycloak",
       "chart": "deploy/monitoring/helm/chart.lock.json",
       "commands": {
         "static": [
           ["python3", "deploy/monitoring/scripts/manage.py", "check"]
         ],
-        "check": ["python3", "deploy/monitoring/scripts/manage.py", "check", "--env", "{MONITORING_ENV}"],
-        "up": ["python3", "deploy/monitoring/scripts/manage.py", "deploy", "--context", "{context}", "--env", "{MONITORING_ENV}", "--grafana-env", "{MONITORING_GRAFANA_ENV}"],
-        "render": ["python3", "deploy/monitoring/scripts/manage.py", "render", "--env", "{MONITORING_ENV}", "--output", "{out}/monitoring"]
+        "check": ["python3", "deploy/monitoring/scripts/manage.py", "check", "--env", "{MONITORING_ENV}", "--keycloak-env", "{KEYCLOAK_ENV}"],
+        "up": ["python3", "deploy/monitoring/scripts/manage.py", "deploy", "--context", "{context}", "--env", "{MONITORING_ENV}", "--grafana-env", "{MONITORING_GRAFANA_ENV}", "--keycloak-env", "{KEYCLOAK_ENV}"],
+        "render": ["python3", "deploy/monitoring/scripts/manage.py", "render", "--env", "{MONITORING_ENV}", "--keycloak-env", "{KEYCLOAK_ENV}", "--output", "{out}/monitoring"]
       },
       "render": {
         "files": ["monitoring/monitoring.yaml", "monitoring/storage.json"]
       },
       "steps": ["monitoring-check", "monitoring-up", "monitoring-smoke"],
       "smoke": {
-        "paths": ["/api/health", "/-/healthy"]
+        "paths": ["/api/health"]
       },
       "runtime": {
         "namespace": "monitoring"

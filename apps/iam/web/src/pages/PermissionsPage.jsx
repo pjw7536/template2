@@ -31,7 +31,7 @@ const SOURCE_LABELS = { direct: "직접 부여", inherited: "SDWT·기본·묶�
 
 function describe(column, state) {
   if (state.source === "unavailable") return "Keycloak에 이 앱 client가 없습니다. 카탈로그 반영을 확인하세요."
-  if (column.group) return state.level ? "그룹에 가입해 관리자 권한이 있습니다." : "그룹에 가입하지 않았습니다."
+  if (column.group) return state.level ? `그룹에 가입해 ${LEVEL_LABELS[state.level]} 권한이 있습니다.` : "그룹에 가입하지 않았습니다."
   if (state.source === "direct") return "이 사용자에게 직접 부여한 역할입니다."
   if (state.source === "inherited") {
     return state.direct

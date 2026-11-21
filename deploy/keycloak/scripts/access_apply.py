@@ -52,6 +52,8 @@ def load_catalog(path: Path) -> list[dict]:
         if "group" in app:
             if not isinstance(app["group"], str) or not app["group"].startswith("/") or app["group"] in groups:
                 raise SetupError(f"{where}: group은 '/'로 시작하는 중복 없는 경로여야 합니다.")
+            if app.get("level", "admin") not in ("viewer", "admin") or not isinstance(app.get("optional", False), bool):
+                raise SetupError(f"{where}: 그룹 level은 viewer 또는 admin이며 optional은 불리언입니다.")
             groups.add(app["group"])
             continue
         if not isinstance(app["client"], str) or not app["client"] or app["client"] in clients:
@@ -128,7 +130,8 @@ def default_roles(app: dict) -> tuple[set[str], set[str]]:
 def public_entry(app: dict, uuid: str | None) -> dict:
     """권한관리 웹이 읽는 카탈로그 항목입니다. client 내부 id를 함께 넣어 view-clients 없이 동작하게 합니다."""
     if "group" in app:
-        return {"group": app["group"], "name": app["name"], "infra": bool(app.get("infra"))}
+        return {"group": app["group"], "name": app["name"], "infra": bool(app.get("infra")),
+                **({"level": app["level"]} if "level" in app else {})}
     entry = {"client": app["client"], "uuid": uuid, "name": app["name"]}
     if "features" in app:
         entry["features"] = [{key: feature[key] for key in ("key", "name", "default")}
@@ -167,6 +170,8 @@ class Apply:
             if "group" in app:
                 found = api.call("GET", "groups", query={"search": app["group"].rsplit("/", 1)[-1], "exact": "true"})
                 if not any(group.get("path") == app["group"] for group in self.walk(found)):
+                    if app.get("optional"):
+                        continue
                     self.warnings.append(f"그룹 {app['group']}이 없습니다. 만들기 전까지 매트릭스에서 변경할 수 없습니다.")
                 self.public.append(public_entry(app, None))
                 continue
@@ -263,10 +268,14 @@ class Apply:
                 api.call("POST", default_path, [roles[name] for name in sorted(state["default_add"])])
             if state["default_remove"]:
                 api.call("DELETE", default_path, [roles[name] for name in sorted(state["default_remove"]) if name in roles])
+        self.apply_catalog()
+
+    def apply_catalog(self):
+        """IAM에 공개하는 카탈로그만 갱신합니다."""
         if self.catalog_group is not None and self.catalog_changed:
             group = self.catalog_group
             attributes = {**group.get("attributes", {}), CATALOG_ATTRIBUTE: chunk(self.catalog_text)}
-            api.call("PUT", f"groups/{segment(group['id'])}", {**group, "attributes": attributes})
+            self.api.call("PUT", f"groups/{segment(group['id'])}", {**group, "attributes": attributes})
 
 
 def main() -> int:

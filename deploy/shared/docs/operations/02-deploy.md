@@ -92,7 +92,7 @@ stat -c '%a %n' identity.env
 
 성공 표시는 `600 identity.env`입니다. Git에는 앱별 env의 초기값을 담은 예제를 포함합니다. 실행 계정이 소유한 로컬 파일에 외부 발급값과 기존 배포에서 확인한 운영값을 `KEY=값` 형식으로 적습니다. 기존 배포에서는 준비 명령 전에 예제 초기값을 현재 운영값과 대조합니다.
 
-처음 적용할 때는 기존 운영 env를 원본으로 지정해 사용 중인 DB·계정·서명 키·스토리지 값을 가져옵니다. 선택 입력이 비어 있으면 원본 값이 적용됩니다. `IAM_PLATFORM_ADMIN_USERNAMES`의 빈 값은 새 관리자 추가를 생략합니다. Etch Members와 Headlamp 관리자 목록은 기존 Keycloak 계정의 EPID를 쉼표로 구분합니다. AD FS 발급값은 두 키를 함께 입력합니다. 예전 `identity.env.local`에 저장한 AD FS secret은 현재 사용값을 확인해 `identity.env`로 옮깁니다.
+처음 적용할 때는 기존 운영 env를 원본으로 지정해 사용 중인 DB·계정·서명 키·스토리지 값을 가져옵니다. 선택 입력이 비어 있으면 원본 값이 적용됩니다. `IAM_PLATFORM_ADMIN_USERNAMES`에는 Etch Members 최초 관리자 EPID 한 개를 입력합니다. 관리자 그룹이 비어 있고 입력값이 있을 때만 등록합니다. Headlamp 관리자 목록은 기존 Keycloak 계정의 EPID를 쉼표로 구분합니다. AD FS 발급값은 두 키를 함께 입력합니다. 예전 `identity.env.local`에 저장한 AD FS secret은 현재 사용값을 확인해 `identity.env`로 옮깁니다.
 
 CSV·CA·chart는 절대 경로 또는 `identity.env` 기준 상대 경로로 지정합니다. 공개 인증서·개인키는 [공용 TLS](../../../README.md#공용-tls-등록)의 파일 경로에 준비합니다. 기존 외부 공용 입력 파일은 `IDENTITY_ENV`로 지정합니다.
 

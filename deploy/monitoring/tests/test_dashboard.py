@@ -24,8 +24,8 @@ class DashboardTests(unittest.TestCase):
     """차트 공급 결과와 사용자에게 보이는 데이터 의미를 검증한다."""
 
     @unittest.skipUnless(shutil.which('helm'), 'Helm 설치 후 실행 가능')
-    def test_chart_provisions_dashboard_and_home_without_extra_downloads(self):
-        """기존 대시보드와 하위 경로를 유지하며 JSON을 손상 없이 공급한다."""
+    def test_chart_provisions_operations_dashboard_without_global_home(self):
+        """운영 대시보드를 공급하고 업무 조직과 공유하는 홈에는 설정하지 않는다."""
         data = manage.read_env(BASE / 'env/k8s.env')
         with tempfile.TemporaryDirectory() as directory:
             manage.render(data, directory, manage.chart_path())
@@ -36,7 +36,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(json.loads(textwrap.dedent(match[1])), BOARD)
         self.assertIn('grafana_dashboard: "1"', document)
-        self.assertIn('default_home_dashboard_path = /etc/grafana/servers-overview/servers-overview.json', rendered)
+        self.assertTrue('default_home_dashboard_path' not in rendered)
         self.assertIn('root_url = https://grafana.etch.samsungds.net/', rendered)
         self.assertIn('name: monitoring-k8s-resources-cluster', rendered)
         self.assertNotIn('download-dashboards', rendered)

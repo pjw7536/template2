@@ -9,6 +9,7 @@ import { displayProfile, formatDisplayName } from "@/lib/users"
 import { cn } from "@/lib/utils"
 import OrgPage from "./pages/OrgPage"
 import PermissionsPage from "./pages/PermissionsPage"
+import PlatformAdminsPage from "./pages/PlatformAdminsPage"
 import UploadPage from "./pages/UploadPage"
 import WorkloadPage from "./pages/WorkloadPage"
 
@@ -17,6 +18,7 @@ const TABS = [
   ["org", "조직"],
   ["workload", "업무 부하"],
   ["upload", "소속 업로드"],
+  ["platform-admins", "플랫폼 관리자"],
 ]
 const TAB_KEYS = TABS.map(([key]) => key)
 
@@ -95,8 +97,10 @@ export default function App() {
       <main className="min-h-0 flex-1 overflow-auto px-6 py-4">
         {!allowed ? (
           <p role="alert" className="rounded-md border border-destructive/30 px-3 py-2 text-sm text-destructive">
-            Etch Members를 사용할 권한이 없습니다. 운영 담당자에게 플랫폼 관리자 등록을 요청한 뒤 다시 로그인하세요.
+            Etch Members를 사용할 권한이 없습니다. 기존 플랫폼 관리자에게 등록을 요청한 뒤 다시 로그인하세요.
           </p>
+        ) : tab === "platform-admins" ? (
+          <PlatformAdminsPage />
         ) : error ? (
           <p role="alert" className="rounded-md border border-destructive/30 px-3 py-2 text-sm text-destructive">{error}</p>
         ) : orgRoot === undefined ? (

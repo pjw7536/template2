@@ -51,6 +51,21 @@ describe("셀 상태", () => {
   it("그룹 열은 가입 여부로 판정한다", () => {
     expect(cellState(headlamp, access({ groups: ["/headlamp-admins"] }))).toMatchObject({ level: "admin", source: "direct" })
   })
+
+  it("Grafana 조직 조회 그룹은 서로 독립적으로 부여하고 회수한다", () => {
+    const ops = "/grafana-operations-viewers"
+    const business = "/grafana-business-viewers"
+    const apps = [
+      { group: ops, name: "Grafana 서버 상태", level: "viewer" },
+      { group: business, name: "Grafana 업무 대시보드", level: "viewer" },
+    ]
+    const [operationsColumn, businessColumn] = buildColumns({ apps })
+    const current = access({ groups: [business] })
+    expect(cellState(operationsColumn, current).level).toBeNull()
+    expect(cellState(businessColumn, current).level).toBe("viewer")
+    expect(planChange(operationsColumn, current, { level: "viewer" })).toEqual({ add: [ops], remove: [] })
+    expect(planChange(businessColumn, current, { level: null })).toEqual({ add: [], remove: [business] })
+  })
 })
 
 describe("변경 계획", () => {

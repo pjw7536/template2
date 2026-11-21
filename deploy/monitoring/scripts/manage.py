@@ -22,9 +22,13 @@ spec = importlib.util.spec_from_file_location('shared_runtime', BASE.parent / 's
 RUNTIME = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(RUNTIME)
 host_dirs = RUNTIME.module('shared_host_dirs', BASE.parent / 'shared/scripts/host_dirs.py')
+ca_bundle = RUNTIME.module('shared_ca_bundle', BASE.parent / 'shared/scripts/ca_bundle.py')
+grafana_sso = RUNTIME.module('monitoring_grafana_sso', BASE / 'scripts/grafana_sso.py')
 
 LOCK = json.loads((BASE / 'helm/chart.lock.json').read_text())
-ENV_KEYS = frozenset(('NAMESPACE', 'NODE_NAME', 'DATA_HOST_PATH', 'DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY', 'IMAGE_PULL_SECRET', 'GRAFANA_ADMIN_SECRET', 'INGRESS_ENABLED', 'GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST'))
+ENV_KEYS = frozenset(('NAMESPACE', 'NODE_NAME', 'DATA_HOST_PATH', 'DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY', 'IMAGE_PULL_SECRET', 'GRAFANA_ADMIN_SECRET', 'INGRESS_ENABLED', 'GRAFANA_HOST'))
+OPTIONAL_KEYS = {'GRAFANA_SSO_ENABLED', 'GRAFANA_OIDC_REALM', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST'}
+KEYCLOAK_ENV = BASE.parent / 'keycloak/env/prod.env'
 VOLUMES = {'prometheus': ('20Gi', 'prometheus-monitoring-prometheus-db-prometheus-monitoring-prometheus-0'),
            'alertmanager': ('2Gi', 'alertmanager-monitoring-alertmanager-db-alertmanager-monitoring-alertmanager-0'),
            'grafana': ('5Gi', 'monitoring-grafana')}
@@ -56,11 +60,18 @@ def read_env(path):
     return result
 
 
+def sso_mode(settings):
+    return settings.get('GRAFANA_SSO_ENABLED', settings['INGRESS_ENABLED'])
+
+
 def validate(settings, example=False):
     """서버별 경로와 registry·리소스 이름을 검증한다."""
-    require(settings.keys() == ENV_KEYS, 'env 키가 설정 계약과 다릅니다.')
+    require(ENV_KEYS <= settings.keys() <= ENV_KEYS | OPTIONAL_KEYS, 'env 키가 설정 계약과 다릅니다.')
     for key, value in settings.items():
-        if key in ('IMAGE_PULL_SECRET', 'GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST') and not value:
+        if key in ('PROMETHEUS_HOST', 'ALERTMANAGER_HOST'):
+            # 이전 운영 env의 키를 허용합니다. 원시 서비스는 ClusterIP로 사용합니다.
+            continue
+        if key in ('IMAGE_PULL_SECRET', 'GRAFANA_HOST') and not value:
             continue
         require(value and not any(c.isspace() for c in value), f'값 형식 오류: {key}')
         require(example or not RUNTIME.is_placeholder(value), f'실제 값 필요: {key}')
@@ -73,12 +84,17 @@ def validate(settings, example=False):
     for key in ('DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY'):
         require(re.fullmatch(r'[a-zA-Z0-9.-]+(?::[0-9]+)?(?:/[a-zA-Z0-9._-]+)*', settings[key]), f'registry 경로 오류: {key}')
     require(settings['INGRESS_ENABLED'] in ('true', 'false'), 'INGRESS_ENABLED는 true 또는 false여야 합니다.')
+    sso_enabled = sso_mode(settings)
+    require(sso_enabled in ('true', 'false'), 'GRAFANA_SSO_ENABLED는 true 또는 false여야 합니다.')
+    realm = settings.get('GRAFANA_OIDC_REALM', 'etch')
+    require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', realm) and realm.lower() != 'master',
+            'GRAFANA_OIDC_REALM에 Keycloak 업무 realm을 지정하세요.')
+    require(sso_enabled != 'true' or settings['INGRESS_ENABLED'] == 'true', 'Grafana SSO에는 공용 HTTPS 주소가 필요합니다.')
     if settings['INGRESS_ENABLED'] == 'true':
-        for key in ('GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST'):
-            host = settings[key]
-            label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
-            require(len(host) <= 253 and re.fullmatch(rf'{label}(?:\.{label})+', host), f'{key}에는 경로·scheme 없는 DNS 이름이 필요합니다.')
-        require(len({settings[key] for key in ('GRAFANA_HOST', 'PROMETHEUS_HOST', 'ALERTMANAGER_HOST')}) == 3, 'Monitoring 서비스별 도메인은 서로 달라야 합니다.')
+        host = settings['GRAFANA_HOST']
+        label = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
+        require(len(host) <= 253 and re.fullmatch(rf'{label}(?:\.{label})+', host),
+                'GRAFANA_HOST에는 경로·scheme 없는 DNS 이름이 필요합니다.')
 
 
 def version(value):
@@ -98,7 +114,7 @@ def chart_path():
     return path.resolve()
 
 
-def values(settings):
+def values(settings, keycloak_env=KEYCLOAK_ENV):
     """서버 배치·Secret 참조·upstream별 mirror를 Helm에 전달한다."""
     node = {'kubernetes.io/hostname': settings['NODE_NAME']}
     registries = dict(zip(('docker', 'quay', 'ghcr', 'k8s'), (settings[k] for k in ('DOCKER_REGISTRY', 'QUAY_REGISTRY', 'GHCR_REGISTRY', 'K8S_REGISTRY'))))
@@ -119,21 +135,15 @@ def values(settings):
     # chart의 tpl 처리 후에도 Grafana 범례의 이중 중괄호를 그대로 전달한다.
     dashboard_template = dashboard.replace('{{', '{{"{{"}}')
     dashboard_configmap = '{{ include "grafana.fullname" . }}-servers-overview'
-    result['grafana'].update({
+    grafana = result['grafana']
+    grafana.update({
         'extraObjects': [{
             'apiVersion': 'v1', 'kind': 'ConfigMap',
             'metadata': {'name': dashboard_configmap, 'namespace': '{{ include "grafana.namespace" . }}',
                          'labels': {'grafana_dashboard': '1'}},
             'data': {'servers-overview.json': dashboard_template},
         }],
-        'extraConfigmapMounts': [{
-            'name': 'servers-overview-home', 'configMap': dashboard_configmap,
-            'mountPath': '/etc/grafana/servers-overview', 'readOnly': True,
-        }],
         'podAnnotations': {'checksum/servers-overview': hashlib.sha256(dashboard.encode()).hexdigest()},
-        'grafana.ini': {'dashboards': {
-            'default_home_dashboard_path': '/etc/grafana/servers-overview/servers-overview.json',
-        }},
     })
     for component in ('prometheus', 'alertmanager'):
         storage = {'volumeClaimTemplate': {'spec': {
@@ -142,24 +152,39 @@ def values(settings):
             'resources': {'requests': {'storage': VOLUMES[component][0]}}}}}
         result[component] = {component + 'Spec': {'nodeSelector': node, 'image': image('quay'),
                            'imagePullSecrets': pull, 'storageSpec' if component == 'prometheus' else 'storage': storage}}
+    if sso_mode(settings) == 'true':
+        oidc = grafana_sso.oauth_config(grafana_sso.issuer(keycloak_env, settings.get('GRAFANA_OIDC_REALM', 'etch')))
+        grafana['grafana.ini'] = {
+            'auth.generic_oauth': oidc, 'auth.basic': {'enabled': True}, 'auth.anonymous': {'enabled': False},
+            'users': {'auto_assign_org_role': 'None', 'allow_org_create': False, 'allow_sign_up': False},
+        }
+        grafana['envValueFrom'] = {'GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET': {
+            'secretKeyRef': {'name': grafana_sso.OIDC_SECRET, 'key': 'client-secret'}}}
+        bundle = ca_bundle.bundle_text()
+        if bundle:
+            ca_name = '{{ include "grafana.fullname" . }}-oidc-ca'
+            grafana['extraObjects'].append({'apiVersion': 'v1', 'kind': 'ConfigMap',
+                'metadata': {'name': ca_name, 'namespace': '{{ include "grafana.namespace" . }}'},
+                'data': {'keycloak-ca.pem': bundle}})
+            grafana['extraConfigmapMounts'] = [{
+                'name': 'grafana-oidc-ca', 'configMap': ca_name, 'mountPath': '/etc/grafana/oidc-ca', 'readOnly': True}]
+            grafana['podAnnotations']['checksum/oidc-ca'] = hashlib.sha256(bundle.encode()).hexdigest()
+            oidc['tls_client_ca'] = '/etc/grafana/oidc-ca/keycloak-ca.pem'
+            grafana['env'] = {'SSL_CERT_DIR': '/etc/ssl/certs:/etc/grafana/oidc-ca'}
+    else:
+        # 로컬 모드의 공용 홈에서만 운영 대시보드 파일을 직접 읽습니다.
+        grafana['extraConfigmapMounts'] = [{
+            'name': 'servers-overview-home', 'configMap': dashboard_configmap,
+            'mountPath': '/etc/grafana/servers-overview', 'readOnly': True}]
+        grafana['grafana.ini'] = {'dashboards': {
+            'default_home_dashboard_path': '/etc/grafana/servers-overview/servers-overview.json'}}
     if settings['INGRESS_ENABLED'] == 'true':
         annotations = {'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
                        'traefik.ingress.kubernetes.io/router.tls': 'true'}
-        for component in VOLUMES:
-            host = settings[component.upper() + '_HOST']
-            path = '/'
-            ingress = {'enabled': True, 'ingressClassName': 'traefik', 'annotations': dict(annotations),
-                       'hosts': [host], 'tls': [],
-                       'pathType': 'Prefix'}
-            if component == 'grafana':
-                ingress['path'] = path
-                result[component]['grafana.ini']['server'] = {
-                    'root_url': f'https://{host}/', 'serve_from_sub_path': False}
-            else:
-                ingress['paths'] = [path]
-                result[component][component + 'Spec'].update(
-                    externalUrl=f'https://{host}/', routePrefix=path)
-            result[component]['ingress'] = ingress
+        host = settings['GRAFANA_HOST']
+        grafana['ingress'] = {'enabled': True, 'ingressClassName': 'traefik', 'annotations': annotations,
+                              'hosts': [host], 'tls': [], 'pathType': 'Prefix', 'path': '/'}
+        grafana['grafana.ini']['server'] = {'root_url': f'https://{host}/', 'serve_from_sub_path': False}
     return result
 
 
@@ -183,7 +208,7 @@ def rendered_components(content):
         require(component not in result, '최종 렌더에 같은 Monitoring 서비스가 중복됐습니다.')
         metadata = re.search(r'^metadata:[ \t]*\n(.*?)(?=^[^\s#]|\Z)', document, re.M | re.S)
         require(metadata, 'Monitoring 렌더의 최상위 metadata가 없습니다.')
-        fields = {}
+        fields = {'kind': kind} if component == 'grafana' else {}
         for key in ('name', 'namespace'):
             matches = re.findall(r'^  ' + key + r':[ \t]*([^\n]+)$', metadata[1], re.M)
             require(len(matches) <= 1 and (key != 'name' or matches), 'Monitoring 렌더의 metadata 이름이 없거나 중복됐습니다.')
@@ -307,20 +332,24 @@ def prepare_storage(kube, settings, components, resources):
     host_dirs.wait_job(run, kube, settings['NAMESPACE'], name)
 
 
-def render(settings, directory, chart, values_file=None):
+def render(settings, directory, chart, values_file=None, keycloak_env=KEYCLOAK_ENV):
     """공식 chart를 렌더하고 Operator가 생성할 이미지까지 목록으로 기록한다."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     overlay = directory / 'values.json'
-    overlay.write_text(json.dumps(values(settings), indent=2) + '\n')
+    overlay.write_text(json.dumps(values(settings, keycloak_env), indent=2) + '\n')
     flags = ['-n', settings['NAMESPACE'], '-f', BASE / 'helm/values.yaml', '-f', overlay]
     if values_file:
         flags += ['-f', values_file]
+    for component in ('prometheus', 'alertmanager'):
+        flags += ['--set', f'{component}.ingress.enabled=false', '--set', f'{component}.service.type=ClusterIP']
     run(['helm', 'lint', chart, *flags])
     content = run(['helm', 'template', 'monitoring', chart, '--include-crds', '--kube-version', LOCK['kubernetesVersion'], *flags])
     images = set(re.findall(r'^[ \t]*image:[ \t]*["\']?([^\s"\']+)', content, re.M))
     images.update(re.findall(r'--prometheus-config-reloader=([^\s"\']+)', content))
     components = rendered_components(content)
+    require(ingress_hosts(settings, content) <= ({settings['GRAFANA_HOST']} if 'grafana' in components else set()),
+            'Monitoring 공용 Ingress는 Grafana 주소만 사용합니다.')
     job = storage_job(settings, components)
     if job:
         images.add(job['spec']['template']['spec']['containers'][0]['image'])
@@ -404,13 +433,13 @@ def read_account(path):
     return values
 
 
-def deploy(settings, context, chart, values_file=None, grafana_env=None):
+def deploy(settings, context, chart, values_file=None, grafana_env=None, keycloak_env=KEYCLOAK_ENV):
     """기존 Operator 충돌·서버 입력 확인 후 저장 폴더·PV·Helm release를 준비한다."""
     require(context and context.strip(), 'deploy에는 --context를 명시하세요.')
     kube = ['kubectl', '--context', context]
     namespace = settings['NAMESPACE']
     with tempfile.TemporaryDirectory(prefix='monitoring-deploy-') as directory:
-        flags = render(settings, directory, chart, values_file)
+        flags = render(settings, directory, chart, values_file, keycloak_env)
         content = (Path(directory) / 'monitoring.yaml').read_text()
         components = rendered_components(content)
         actual = json.loads(run([*kube, 'version', '-o', 'json']))['serverVersion']['gitVersion']
@@ -438,11 +467,27 @@ def deploy(settings, context, chart, values_file=None, grafana_env=None):
         if settings['IMAGE_PULL_SECRET']:
             run([*kube, '-n', namespace, 'get', 'secret', settings['IMAGE_PULL_SECRET'], '-o', 'name'])
         connect_ingress(settings, context, content, dry_run=True)
+        grafana = components.get('grafana')
+        api = None
+        if grafana and sso_mode(settings) == 'true':
+            grafana_namespace = grafana.get('namespace', namespace)
+            api, oidc_revision = grafana_sso.ensure_oidc(run, kube, grafana_namespace, settings, keycloak_env)
         resources = json.loads((Path(directory) / 'storage.json').read_text())
         prepare_storage(kube, settings, components, resources)
         if resources['items']:
             run([*kube, 'apply', '-f', Path(directory) / 'storage.json'])
         run(['helm', 'upgrade', '--install', 'monitoring', chart, '--kube-context', context, '--wait', '--timeout', '15m', *flags])
+        if api:
+            org_id = grafana_sso.prepare_business_org(run, kube, grafana_namespace, grafana['name'],
+                                                       settings['GRAFANA_ADMIN_SECRET'], grafana_env, read_account)
+            # Grafana는 시작할 때 조직 이름을 ID로 변환해 보관합니다. 조직 등록 이후 한 번 갱신합니다.
+            scoped = [*kube, '-n', grafana_namespace]
+            workload = f"{grafana['kind'].lower()}/{grafana['name']}"
+            annotations = {grafana_sso.OIDC_REVISION: f'{org_id}-{oidc_revision}'}
+            patch = {'spec': {'template': {'metadata': {'annotations': annotations}}}}
+            run([*scoped, 'patch', workload, '--type=merge', '--patch', json.dumps(patch)])
+            run([*scoped, 'rollout', 'status', workload, '--timeout=300s'])
+            grafana_sso.publish_members_catalog(api)
         for component in ('prometheus', 'alertmanager'):
             if component not in components:
                 continue
@@ -465,8 +510,10 @@ def main():
     parser.add_argument('--output', type=Path)
     parser.add_argument('--context')
     parser.add_argument('--values', type=Path, help='환경별 비밀값 없는 Helm override')
+    parser.add_argument('--keycloak-env', type=Path, default=KEYCLOAK_ENV,
+                        help='Grafana SSO issuer·관리 API 설정에 쓸 Keycloak env')
     parser.add_argument('--grafana-env', type=Path, default=BASE / 'env/grafana-initial.env',
-                        help='Grafana 관리자 Secret이 없을 때만 사용하는 계정 파일')
+                        help='Grafana 초기 설정 또는 현재 관리자 인증에 쓸 계정 파일')
     args = parser.parse_args()
     if args.command == 'fetch-chart':
         with urlopen(LOCK['url'], timeout=60) as response:
@@ -482,14 +529,14 @@ def main():
     validate(settings, example)
     chart = chart_path()
     if args.command == 'deploy':
-        deploy(settings, args.context, chart, args.values, args.grafana_env)
+        deploy(settings, args.context, chart, args.values, args.grafana_env, args.keycloak_env)
     elif args.command == 'render':
         require(args.output, 'render에는 --output이 필요합니다.')
-        render(settings, args.output, chart, args.values)
+        render(settings, args.output, chart, args.values, args.keycloak_env)
         print('렌더 완료. images.txt의 모든 이미지를 사내 미러에서 확인하세요.')
     else:
         with tempfile.TemporaryDirectory(prefix='monitoring-check-') as directory:
-            render(settings, directory, chart, args.values)
+            render(settings, directory, chart, args.values, args.keycloak_env)
         print('Monitoring Helm 원본 검사 통과' + (' (저장소 env 정적 검사; 실제 서버 검사는 별도)' if example else ' (실제 설정; 클러스터 적용 없음)'))
 
 

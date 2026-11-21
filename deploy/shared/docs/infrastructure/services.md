@@ -19,8 +19,8 @@
 | MinIO 콘솔 | `https://minio.etch.samsungds.net/` | MinIO env·운영 안내 |
 | MinIO 파일 공개 경로 | `https://s3.etch.samsungds.net/` | MinIO 운영 안내 |
 | Grafana | `https://grafana.etch.samsungds.net/` | Monitoring 운영 안내 |
-| Prometheus 수집 대상 | `https://prometheus.etch.samsungds.net/targets` | Monitoring 운영 안내 |
-| Alertmanager | `https://alert.etch.samsungds.net/` | Monitoring 운영 안내 |
+| Prometheus 수집 대상 | 기존 공개 주소 `https://prometheus.etch.samsungds.net/targets` | 운영 상태 미확인. 저장소 Monitoring 정의는 Kubernetes 내부 서비스로 설정 |
+| Alertmanager | 기존 공개 주소 `https://alert.etch.samsungds.net/` | 운영 상태 미확인. 저장소 Monitoring 정의는 Kubernetes 내부 서비스로 설정 |
 | Headlamp | `https://headlamp.etch.samsungds.net/` | Headlamp 운영 안내 |
 | IAM 웹 공개 주소 | `https://members.etch.samsungds.net/` | 사용자 확정. [IAM 운영 env](../../../iam/env/prod.env)의 `IAM_PUBLIC_URL`. DNS·TLS·웹 공개는 미확인 |
 | 사내 이미지 저장소(Zot) | `https://store.etch.samsungds.net/` | `deploy/registry/env/k8s.env`의 `REGISTRY_HOST`. DNS·TLS 등록과 서버 적용 미확인 |
@@ -43,7 +43,7 @@ Portal은 같은 origin의 `/api`·`/auth`를 유지하며 다른 제품 앱을 
 | Keycloak | `keycloak-public-url`·Ingress host, Portal·Airflow·Headlamp issuer, AD FS 복귀 주소 |
 | Airflow | `AIRFLOW_WEBSERVER_BASE_URL`, Portal의 내부 `AIRFLOW_BASE_URL`·공개 `AIRFLOW_PUBLIC_BASE_URL` |
 | MinIO | `MINIO_API_HOST`·`MINIO_CONSOLE_HOST`·콘솔 redirect URL, Portal Web의 `VITE_MINIO_ENDPOINT` |
-| Monitoring | `GRAFANA_HOST`·`PROMETHEUS_HOST`·`ALERTMANAGER_HOST`, root URL·route prefix |
+| Monitoring | Grafana 공용 주소 `GRAFANA_HOST`와 root URL. 운영 Ingress 확인은 [Monitoring 운영 안내](../../../monitoring/docs/02-operations.md#화면과-지표-확인) |
 | Headlamp | `HEADLAMP_HOST`, 루트 base URL·Keycloak `/oidc-callback` |
 | IAM | `IAM_PUBLIC_URL`에 선언한 공개 origin과 Keycloak `iam` client의 redirect·web origin |
 

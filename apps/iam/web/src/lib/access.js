@@ -28,7 +28,7 @@ export function buildColumns(catalog) {
   const columns = []
   for (const app of catalog.apps) {
     if (app.group) {
-      columns.push({ key: app.group, label: app.name, group: app.group, infra: Boolean(app.infra), levels: ["admin"] })
+      columns.push({ key: app.group, label: app.name, group: app.group, infra: Boolean(app.infra), levels: [app.level ?? "admin"] })
       continue
     }
     const base = { client: app.client, uuid: app.uuid, levels: LEVELS }
@@ -66,8 +66,8 @@ function highest(roles, has) {
  */
 export function cellState(column, access) {
   if (column.group) {
-    const member = access.groups.has(column.group)
-    return { level: member ? "admin" : null, direct: member ? "admin" : null, source: member ? "direct" : "none" }
+    const level = access.groups.has(column.group) ? column.levels[0] : null
+    return { level, direct: level, source: level ? "direct" : "none" }
   }
   const client = access.clients[column.client]
   if (!client) return { level: null, direct: null, source: "unavailable" }

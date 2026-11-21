@@ -75,8 +75,14 @@ Keycloak의 소속(팀·라인·SDWT), 소속별 역할, 앱 역할을 관리하
 ## 사용 조건
 
 - [IAM 배포](../../deploy/iam/README.md)는 `iam` client, `/iam/platform-admins` 그룹, `org` client·관리 권한과 앱 역할 카탈로그를 반영합니다. 웹은 `/iam` 속성의 카탈로그에서 앱 열과 `org` client id를 읽습니다.
-- `iam` 액세스 토큰에 `realm-management/manage-users` 역할이 있어야 사용할 수 있습니다. 운영 담당자는 [IAM 배포 입력](../../deploy/iam/README.md#입력)에 승인된 계정의 EPID를 지정해 `/iam/platform-admins`에 추가합니다. 반영 후 로그아웃하고 다시 로그인합니다.
+- `iam` 액세스 토큰에 `realm-management/manage-users` 역할이 있어야 사용할 수 있습니다. 관리자 그룹이 비어 있으면 [IAM 배포 입력](../../deploy/iam/README.md#입력)에 기존 계정의 EPID 한 개를 지정해 최초 관리자를 등록합니다.
 - 사용자는 사내 로그인을 한 번 이상 해야 Keycloak에 존재하므로 검색·업로드 대상이 됩니다.
+
+### 플랫폼 관리자 추가
+
+1. 기존 관리자가 Etch Members의 **플랫폼 관리자** 탭을 엽니다.
+2. 대상의 EPID를 입력하고 **계정 확인**을 누릅니다. 표시된 `display_name(loginid)`와 EPID를 확인한 뒤 **권한 부여**를 누릅니다.
+3. 대상은 다시 로그인하면 Etch Members를 사용할 수 있습니다. 부여 시 Keycloak이 호출자의 관리 권한을 검사하고 그룹 가입을 관리 이벤트로 남깁니다.
 
 ## 권한 모델
 
@@ -147,6 +153,7 @@ SDWT S의 데이터            : min(앱 역할, org_roles 중 sdwt:S:<등급>�
 | Portal | 이전 역할(`portal-admin`, `portal-all-apps`, `<앱>-user`·`-admin`)과 `/portal-members` | 새 역할(`all:admin`, `emails:user` 등)로 전환 전까지 매트릭스 변경은 Portal에 반영되지 않습니다 |
 | Airflow | 이전 역할(`Viewer`·`User`·`Admin`) | `apps/airflow/image/oidc_claims.py`를 `viewer`·`user`·`admin`으로 바꾸면 반영됩니다 |
 | Headlamp | 그룹 `/headlamp-admins` | 매트릭스에서 바로 반영됩니다 |
+| Grafana | 운영 모니터링과 업무 대시보드 조회 그룹 | 매트릭스에서 각각 부여·회수하며 Grafana가 로그인 시 조직을 동기화합니다. [운영 안내](../../deploy/monitoring/docs/02-operations.md#grafana-조직별-조회-권한) |
 
 이전 역할은 `make keycloak-access-apply`가 경고만 하고 지우지 않습니다. 앱 전환 후 Keycloak에서 삭제합니다.
 

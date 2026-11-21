@@ -11,20 +11,21 @@ Prometheus·Grafana·Alertmanager(`kube-prometheus-stack`)를 설치·운영하�
 | 역할 | Prometheus가 노드·Pod 지표를 수집하고 Grafana로 조회하는 클러스터 모니터링 |
 | namespace | `monitoring` (Helm release `monitoring`, chart `kube-prometheus-stack` 91.4.0) |
 | 실행 Worker | `khinfow01`, 데이터 `/appdata/monitoring`(없으면 `monitoring-up`이 생성). node-exporter는 모든 노드 |
-| 공개 주소 | `https://grafana.etch.samsungds.net`, `https://prometheus.etch.samsungds.net`, `https://alert.etch.samsungds.net` |
+| 공개 주소 | `https://grafana.etch.samsungds.net` |
 | 배포 명령 | `make ops-deploy APP=monitoring` = 준비 검사 → `monitoring-check` → `monitoring-up` → `monitoring-smoke` → 대조 |
 | 완료 기준 | `ops-deploy` 요약의 `failedStep` `null`·`driftResultCode` `0`, Pod Ready, PVC Bound, `smoke 통과: monitoring` |
-| 먼저 필요한 것 | [공용 Traefik(ingress)](../shared/ingress/README.md) 배포, Helm 3.19 이상. chart 파일과 세 host의 공용 TLS는 준비 검사가 확인하고, 필요한 파일이 있으면 자동으로 준비 |
+| 먼저 필요한 것 | [공용 Traefik](../shared/ingress/README.md)·[Keycloak](../keycloak/README.md) 배포, Helm 3.19 이상. 준비 검사가 chart와 Grafana 공용 TLS를 확인 |
 
 ## 구성
 
 - 수집·조회: Operator·Prometheus·Alertmanager·Grafana·kube-state-metrics는 지정 Worker 한 대, node-exporter는 대상 노드마다 실행합니다. 새 Worker는 가입하면 자동으로 수집 대상에 포함됩니다.
-- 기본 구성에 없는 것: etcd·scheduler·controller-manager·kube-proxy 수집과 Grafana SSO. Alertmanager 기본 수신자는 `null`이며 외부 통지를 보내지 않습니다.
+- Alertmanager 기본 수신자는 `null`입니다. 수집 범위는 클러스터 노드·Pod 지표입니다.
 - chart: [chart.lock.json](helm/chart.lock.json)에 버전과 SHA-256을 고정한 파일을 사용합니다. 파일이 없으면 `ops-deploy`의 준비 검사가 사내 미러에서 받으며, `monitoring-check`·`monitoring-up`은 chart를 내려받지 않습니다.
 - 이미지: [env/k8s.env](env/k8s.env)의 docker.io·quay.io·ghcr.io·registry.k8s.io 사내 미러에서 받습니다.
-- 접속: 공용 Traefik의 HTTPS entrypoint로 들어옵니다. Grafana는 `https://<GRAFANA_HOST>/`, Prometheus 수집 상태는 `https://<PROMETHEUS_HOST>/targets`, Alertmanager는 `https://<ALERTMANAGER_HOST>/`입니다. `monitoring-up`은 기존 VIP·다른 앱·Traefik 배치를 보존하면서 `monitoring` namespace의 라우팅 권한과 감시 범위만 추가합니다.
+- 웹 접속은 Grafana HTTPS 주소를 사용합니다. Prometheus와 Alertmanager는 클러스터 내부 서비스로, 관리자는 [화면과 지표 확인](docs/02-operations.md#화면과-지표-확인)의 방법으로 직접 점검합니다.
+- Grafana는 Keycloak SSO로 로그인하고 [조직별 조회 권한](docs/02-operations.md#grafana-조직별-조회-권한)을 적용합니다.
 - 저장: 지정 Worker 한 대의 local PV(`Retain`)이며 고가용성 구성이 아닙니다. 서비스별 폴더와 용량은 [저장소와 폴더](docs/01-prepare.md#저장소와-폴더)에 있습니다.
-- Kubernetes 1.25 이상이 필요하고, 폴더 준비 Job의 root·`hostPath`와 node-exporter의 `hostNetwork`·`hostPath`가 namespace 정책에서 허용되어야 합니다. Portal·Keycloak·Airflow 없이 설치할 수 있습니다.
+- Kubernetes 1.25 이상이 필요하고, 폴더 준비 Job의 root·`hostPath`와 node-exporter의 `hostNetwork`·`hostPath`가 namespace 정책에서 허용되어야 합니다.
 
 배치 노드·서비스 주소는 [서비스·앱 배치](../shared/docs/infrastructure/services.md), 미러 주소는 [사내 저장소·미러](../shared/docs/infrastructure/repositories.md)에서 관리합니다.
 
@@ -37,8 +38,9 @@ Prometheus·Grafana·Alertmanager(`kube-prometheus-stack`)를 설치·운영하�
 | 실행 Worker `khinfow01`이 `Ready`이고 cordon 상태가 아님. 차단 taint는 `monitoring-up`이 확인 | `kubectl --context "<context>" get node khinfow01` |
 | 관리 호스트의 Helm이 3.19 이상 | `helm version --short` |
 | chart 파일 `deploy/monitoring/helm/vendor/kube-prometheus-stack-91.4.0.tgz`. 자동: 없으면 사내 미러에서 받음. 미러에서 받지 못하면 [파일 반입](../shared/docs/infrastructure/access.md#파일-반입)으로 둠([방법](docs/01-prepare.md#고정-chart-준비)) | `make ops-preflight APP=monitoring KUBE_CONTEXT="<context>"`의 `chart` 줄이 `[통과]` 또는 `[자동 준비]` |
-| 세 host를 SAN에 가진 `fullchain.crt`·`private.key`를 `deploy/shared/certs/etch.samsungds.net/`에 배치([인증서 발급](../shared/docs/infrastructure/access.md#인증서-발급)). 자동: 공용 TLS 등록 | `make ops-preflight APP=monitoring KUBE_CONTEXT="<context>"`의 `공용 TLS <host>` 세 줄이 `[통과]` 또는 `[자동 준비]` |
-| DNS 세 host → APP VIP 등록. 없어도 배포는 진행하며 smoke가 `DNS 미등록`으로 표시 | `getent hosts grafana.etch.samsungds.net prometheus.etch.samsungds.net alert.etch.samsungds.net`. 빠진 host가 있으면 [DNS](../shared/docs/infrastructure/access.md#dns) |
+| Grafana host를 SAN에 가진 `fullchain.crt`·`private.key`를 `deploy/shared/certs/etch.samsungds.net/`에 배치([인증서 발급](../shared/docs/infrastructure/access.md#인증서-발급)). 자동으로 공용 TLS 등록 | `make ops-preflight APP=monitoring KUBE_CONTEXT="<context>"`의 `공용 TLS <host>`가 `[통과]` 또는 `[자동 준비]` |
+| Grafana DNS를 APP VIP에 등록. 없어도 배포는 진행하며 smoke가 `DNS 미등록`으로 표시 | `getent hosts grafana.etch.samsungds.net`. 조회되지 않으면 [DNS](../shared/docs/infrastructure/access.md#dns) |
+| 업무 realm과 관리자 접속 준비 | [Keycloak 관리 API](../shared/docs/infrastructure/access.md#keycloak-관리-api) |
 | 실행 노드가 필요한 이미지를 사내 미러에서 받을 수 있음. 미러에 없는 이미지는 [파일 반입](../shared/docs/infrastructure/access.md#파일-반입)([이미지 목록](docs/01-prepare.md#이미지-목록-확인)) | [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py <노드> --context "<context>" --command 'sudo -n crictl pull <images.txt의 이미지>'`를 실행 노드마다 실행 |
 | `khinfow01`의 데이터 디스크가 마운트되어 있고 여유 공간이 있음 | [노드 명령 실행](../shared/docs/infrastructure/access.md#노드-명령-실행)의 `python3 deploy/shared/scripts/node_exec.py khinfow01 --context "<context>" --command 'df -h /appdata'`. 기준은 [디스크 확인](docs/01-prepare.md#저장소와-폴더) |
 | 새 설치일 때 기존 Prometheus Operator가 없음 | `kubectl --context "<context>" get crd prometheuses.monitoring.coreos.com --ignore-not-found`의 출력이 없음 |
@@ -49,7 +51,8 @@ Prometheus·Grafana·Alertmanager(`kube-prometheus-stack`)를 설치·운영하�
 | 이름 | 의미 | 기본값 |
 | --- | --- | --- |
 | `MONITORING_ENV` | Monitoring env 경로 | `deploy/monitoring/env/k8s.env`. 외부 경로면 모든 명령에 같은 값 |
-| `MONITORING_GRAFANA_ENV` | Grafana 관리자 계정 파일. Secret `monitoring-grafana-admin`이 없을 때만 사용 | `deploy/monitoring/env/grafana-initial.env` |
+| `MONITORING_GRAFANA_ENV` | 신규 초기 계정 또는 기존 Grafana DB의 현재 서버 관리자 계정 파일. 업무 조직 등록에 사용 | `deploy/monitoring/env/grafana-initial.env` |
+| `KEYCLOAK_ENV` | SSO 공개 URL과 관리 API 입력 원본 | `deploy/keycloak/env/prod.env` |
 
 env 파일의 키입니다.
 
@@ -62,7 +65,8 @@ env 파일의 키입니다.
 | `IMAGE_PULL_SECRET` | 미러 인증이 필요할 때 사용할 기존 Kubernetes Secret 이름. 인증이 없으면 빈 값 |
 | `GRAFANA_ADMIN_SECRET` | `admin-user`·`admin-password` 키를 가진 Grafana 관리자 Secret 이름. 기본값 `monitoring-grafana-admin`([Grafana 관리자 계정](docs/01-prepare.md#grafana-관리자-계정)) |
 | `INGRESS_ENABLED` | `true`면 서비스별 도메인으로 HTTPS 접속, `false`면 port-forward 전용([선택 설정](docs/01-prepare.md#선택-설정)) |
-| `GRAFANA_HOST`·`PROMETHEUS_HOST`·`ALERTMANAGER_HOST` | 서비스별 도메인. 서로 달라야 하며 port-forward 모드에서는 빈 값 |
+| `GRAFANA_HOST` | Grafana 공개 도메인. port-forward 전용 모드에서는 빈 값 |
+| `GRAFANA_SSO_ENABLED`·`GRAFANA_OIDC_REALM` | SSO 사용 여부와 업무 realm. 생략하면 각각 `INGRESS_ENABLED` 값과 `etch`를 사용 |
 
 이 문서의 명령은 기본 namespace와 Secret 이름을 사용합니다. 이름을 바꾸면 명령에서도 함께 바꿉니다.
 저장소의 기본 env와 다른 값이 필요하면 [운영 입력 파일](../shared/docs/infrastructure/access.md#운영-입력-파일) 절의 방법으로 저장소 밖 env를 만들어 `MONITORING_ENV=<경로>`로 지정합니다.
@@ -74,7 +78,7 @@ env 파일의 키입니다.
    kubectl --context "<context>" get node khinfow01
    ```
    성공: `Ready`.
-2. [변경] 배포. 준비 검사(chart 받기·세 host의 공용 TLS 등록을 자동 실행) → 검사 → namespace·Grafana 관리자 Secret·저장 폴더·local PV·Helm 설치(`--wait`) → smoke → 대조 순서로 진행합니다.
+2. [변경] 배포. 준비 검사 → Keycloak client·조회 그룹과 Grafana OIDC Secret 준비 → Helm 설치 → Grafana 업무 조직과 Members 카탈로그 반영 → smoke와 대조 순서로 진행합니다.
    ```bash
    make ops-deploy APP=monitoring KUBE_CONTEXT="<context>"
    ```
@@ -92,11 +96,13 @@ env 파일의 키입니다.
 | --- | --- |
 | env·values·대시보드 | [변경] `make ops-deploy APP=monitoring KUBE_CONTEXT="<context>"`. 저장소 밖 env는 같은 명령에 `MONITORING_ENV=<경로>`를 붙임 |
 | 대시보드 JSON | [검사] `python3 -m unittest discover -s deploy/monitoring/tests -p 'test_dashboard.py'`가 통과하면 위 행의 [변경] 명령을 실행. [방법](docs/02-operations.md#대시보드-원본-갱신) |
-| 인증서 | [변경] [공용 TLS 등록](../README.md#공용-tls-등록)의 명령으로 `grafana.etch.samsungds.net`, `prometheus.etch.samsungds.net`, `alert.etch.samsungds.net`을 각각 다시 등록 |
+| Grafana 인증서 | [변경] [공용 TLS 등록](../README.md#공용-tls-등록)의 명령으로 Grafana의 인증서를 등록 |
 | chart 버전·`NODE_NAME`·`DATA_HOST_PATH` | [승인] [갱신 기준](docs/02-operations.md#갱신운영)으로 CRD 호환성·데이터 이전 필요 여부를 확인하고 적용 범위·영향을 보여 준 뒤 승인받아 실행 |
 | Grafana 비밀번호 | [변경] [화면 기능 확인](../shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법으로 Grafana 화면에서 변경하고 새 비밀번호로 로그인을 확인. Secret만 바꾸면 Grafana DB의 기존 계정은 그대로 유지됨 |
 
 `ops-deploy`를 실행한 행의 성공 확인은 A-2와 같습니다. JSON의 `failedStep`이 `null`, `driftResultCode`가 `0`이어야 합니다.
+
+Grafana의 두 조회 항목을 표시할 때는 [Etch Members 업데이트](../iam/README.md#b-업데이트)로 최신 웹 이미지를 함께 반영합니다.
 
 ## C. 배포 후 확인
 
@@ -110,7 +116,7 @@ make monitoring-smoke KUBE_CONTEXT="<context>"
 
 성공: release `deployed`, Pod Ready, PVC Bound, `smoke 통과: monitoring`. host가 DNS에 없으면 `DNS 미등록. APP VIP 직접 접속: …` 줄과 `smoke 통과: monitoring (DNS 미등록 host <n>개)`로 끝나며 이것도 통과입니다. 남은 DNS 등록은 [DNS](../shared/docs/infrastructure/access.md#dns) 절로 수행합니다.
 
-[조회] Grafana 로그인과 기본 홈 `/d/servers-overview`, Prometheus `/targets`는 [화면 기능 확인](../shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법으로 [화면과 지표 기준](docs/02-operations.md#화면과-지표-확인)을 확인합니다.
+[조회] Grafana SSO, Members에서 부여한 조직별 접근, Prometheus 수집은 [화면과 지표 기준](docs/02-operations.md#화면과-지표-확인)으로 확인합니다.
 
 ## 문제 해결과 멈춤 조건
 

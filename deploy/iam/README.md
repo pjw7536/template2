@@ -31,7 +31,7 @@
 | IAM client | public client `iam`, 표시 이름 `Etch Members`, PKCE S256, redirect·web origin, `fullScopeAllowed=false`, 필요한 관리 역할과 `display_name`·`loginid` mapper |
 | 관리자 그룹과 정책 | `/iam/platform-admins`, `org` client에 한정한 세분화 관리 권한 v2, realm의 관리 이벤트 상세 기록 |
 | 앱 역할 카탈로그 | 이미 등록된 앱 client의 역할과 `/iam`의 `iam.catalog` 속성 |
-| 플랫폼 관리자 | `IAM_PLATFORM_ADMIN_USERNAMES`에 명시한 기존 사용자를 관리자 그룹에 추가 |
+| 플랫폼 관리자 | 그룹이 비어 있으면 env로 최초 관리자 등록, 이후 Etch Members 화면에서 추가 |
 
 ## 사전 준비
 
@@ -60,13 +60,13 @@
 | --- | --- |
 | `IAM_PUBLIC_URL` | IAM 웹을 서비스할 HTTPS 주소. 경로 없이 입력. 운영 기본값은 [prod.env](env/prod.env) |
 | `KEYCLOAK_TARGET_REALM` | 설정을 적용할 업무 realm. 기본 `etch` |
-| `IAM_PLATFORM_ADMIN_USERNAMES` | 추가할 기존 계정의 Keycloak `username`(EPID)을 쉼표로 구분. 기존 그룹 가입은 유지하며 빈 값이면 추가하지 않음 |
+| `IAM_PLATFORM_ADMIN_USERNAMES` | 최초 관리자의 Keycloak `username`(EPID) 한 개. 관리자 그룹이 비어 있고 입력값이 있을 때만 등록 |
 | `IAM_STORAGE_NODE` | 업무 부하 API와 정적 PV를 배치할 Worker의 `kubernetes.io/hostname` |
 | `IAM_DATA_HOST_PATH` | Worker의 SQLite 전용 저장 폴더. 기본 `/appdata/iam` |
 
 기존 IAM 설정용 env를 그대로 사용할 때는 두 스토리지 키를 추가합니다. 기본값과 다른 파일을 쓰면 검사·빌드·배포·렌더·대조에 같은 경로를 지정합니다. Keycloak 설정만 다루는 `iam-keycloak-setup`과 `iam-verify`를 배포와 같은 값으로 실행할 때는 별도 origin·realm 환경변수도 대조합니다.
 
-사내 SSO 발급값과 플랫폼 관리자 목록을 `identity.env`에서 관리할 때는 [공용 운영 입력 준비](../shared/docs/operations/02-deploy.md#공용-운영-입력-준비)가 출력한 `KEYCLOAK_ENV`, `IAM_ENV`와 선택 Zot 인자를 사용합니다.
+사내 SSO 발급값과 최초 관리자 EPID를 `identity.env`에 입력할 때는 [공용 운영 입력 준비](../shared/docs/operations/02-deploy.md#공용-운영-입력-준비)가 출력한 `KEYCLOAK_ENV`, `IAM_ENV`와 선택 Zot 인자를 사용합니다.
 
 ## A. 최초 설치
 
@@ -87,7 +87,8 @@
 | 변경 | 실행 |
 | --- | --- |
 | 앱 코드·빌드 입력·워크로드 설정 | [변경] A의 검사·적용 절차를 다시 실행 |
-| 관리자 목록·IAM client 이름과 mapper·조직 역할·앱 역할 카탈로그 | [변경] `make iam-keycloak-setup IAM_KEYCLOAK_APPLY=1 IAM_ENV="<IAM env 경로>" KEYCLOAK_ENV="<Keycloak env 경로>"`. 성공은 `IAM Keycloak 설정 적용 완료.` |
+| IAM client 이름과 mapper·조직 역할·앱 역할 카탈로그 | [변경] `make iam-keycloak-setup IAM_KEYCLOAK_APPLY=1 IAM_ENV="<IAM env 경로>" KEYCLOAK_ENV="<Keycloak env 경로>"`. 성공은 `IAM Keycloak 설정 적용 완료.` |
+| 플랫폼 관리자 추가 | [변경] 기존 플랫폼 관리자가 [Etch Members 화면](../../apps/iam/README.md#플랫폼-관리자-추가)에서 등록 |
 | 사용 중인 IAM 웹의 공개 주소 변경 | [승인] 새 주소와 영향받는 로그인 경로를 보여 준 뒤 A의 적용 명령으로 반영 |
 | 적용 상태만 조회 | [조회] C의 `iam-verify` 실행 |
 
@@ -113,7 +114,7 @@ make iam-verify IAM_ENV="<IAM env 경로>" KEYCLOAK_ENV="<Keycloak env 경로>"
 | 공개 주소가 다른 Ingress에서 사용 중 | [조회] 해당 Ingress의 서비스 용도와 IAM 공개 주소를 확인 |
 | `Keycloak 연결 또는 응답 처리 실패`, HTTP 401·403 | [Keycloak 관리 API](../shared/docs/infrastructure/access.md#keycloak-관리-api)에서 배포에 쓴 env의 주소·DNS·CA·관리 권한 확인 |
 | `IAM_PLATFORM_ADMIN_USERNAMES의 기존 사용자` 조회 실패 | 업무 realm과 정확한 username 확인. 사내 로그인으로 처음 등록되는 사용자라면 먼저 로그인한 뒤 IAM 재실행 |
-| 로그인에 성공했지만 Etch Members 접근 불가 | 플랫폼 관리자 등록이 승인되면 해당 EPID를 `IAM_PLATFORM_ADMIN_USERNAMES`에 넣고 [업데이트](#b-업데이트)의 관리자 목록 반영 명령을 실행합니다. 설정 검증이 통과하면 로그아웃 후 다시 로그인합니다. 그룹에 이미 가입했다면 `iam` 액세스 토큰에 `realm-management/manage-users` 역할이 있는지 확인합니다 |
+| 로그인에 성공했지만 Etch Members 접근 불가 | 관리자 그룹이 비어 있으면 최초 관리자 EPID를 입력하고 [업데이트](#b-업데이트)의 Keycloak 설정 명령을 실행합니다. 기존 관리자가 있으면 Etch Members에서 등록을 요청합니다. 등록 후 로그아웃하고 다시 로그인합니다. 이미 그룹에 가입한 계정은 `iam` 액세스 토큰의 `realm-management/manage-users` 역할을 확인합니다 |
 | `Keycloak에서 세분화 관리 권한 v2를 지원해야 합니다`, `admin-permissions client가 없습니다` | Keycloak 버전과 지원 기능을 확인할 때까지 IAM 적용 중단 |
 | 기존 `iam` client가 public client가 아니거나 기존 권한의 유형이 다름 | 대상 realm과 객체를 확인할 때까지 중단 |
 
