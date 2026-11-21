@@ -277,20 +277,28 @@
       "sourcePaths": ["apps/iam"],
       "deployPath": "deploy/iam",
       "localPath": null,
-      "dependsOn": ["keycloak"],
+      "dependsOn": ["ingress", "keycloak", "registry"],
       "inputs": [
         {"variable": "IAM_ENV", "default": "deploy/iam/env/prod.env"},
-        {"variable": "KEYCLOAK_ENV", "default": "deploy/keycloak/env/prod.env", "record": false}
+        {"variable": "IAM_BUILD_ENV", "default": "deploy/iam/env/build.env"},
+        {"variable": "KEYCLOAK_ENV", "default": "deploy/keycloak/env/prod.env", "record": false},
+        {"variable": "REGISTRY_ENV", "default": "deploy/registry/env/k8s.env", "record": false}
       ],
+      "hosts": ["IAM_PUBLIC_URL"],
+      "caBundle": "keycloak",
+      "buildsImage": true,
       "commands": {
         "static": [
-          ["python3", "deploy/iam/scripts/setup_keycloak.py", "--help"]
+          ["python3", "deploy/iam/scripts/manage.py", "static"]
         ],
-        "check": ["python3", "deploy/keycloak/scripts/admin_env.py", "--env", "{KEYCLOAK_ENV}", "--", "python3", "deploy/iam/scripts/setup_keycloak.py", "--env", "{IAM_ENV}"],
-        "up": ["python3", "deploy/keycloak/scripts/admin_env.py", "--env", "{KEYCLOAK_ENV}", "--", "python3", "deploy/iam/scripts/setup_keycloak.py", "--env", "{IAM_ENV}", "--apply"]
+        "check": ["python3", "deploy/iam/scripts/manage.py", "check", "--context", "{context}", "--env", "{IAM_ENV}", "--build-env", "{IAM_BUILD_ENV}", "--keycloak-env", "{KEYCLOAK_ENV}", "--registry-env", "{REGISTRY_ENV}"],
+        "up": ["python3", "deploy/iam/scripts/manage.py", "deploy", "--context", "{context}", "--env", "{IAM_ENV}", "--build-env", "{IAM_BUILD_ENV}", "--keycloak-env", "{KEYCLOAK_ENV}", "--registry-env", "{REGISTRY_ENV}"],
+        "render": ["python3", "deploy/iam/scripts/manage.py", "render", "--env", "{IAM_ENV}", "--build-env", "{IAM_BUILD_ENV}", "--keycloak-env", "{KEYCLOAK_ENV}", "--registry-env", "{REGISTRY_ENV}"]
       },
-      "steps": ["iam-check", "iam-up"],
-      "runtime": null
+      "render": {"stdout": "iam.json"},
+      "steps": ["iam-check", "iam-image", "iam-up", "iam-smoke"],
+      "smoke": {"paths": ["/api/workload/healthz"]},
+      "runtime": {"namespace": "iam"}
     }
   },
   "groups": {

@@ -8,7 +8,7 @@
 ## 사용 규칙
 
 1. 단계가 이 문서의 절을 가리키면 그 절의 `접근 방법`으로 실행하고 `완료 확인`으로 결과를 확인합니다.
-2. `접근 방법`이 `미확인`이면 `찾는 방법`의 [조회] 명령으로 사용할 수 있는 경로를 먼저 확인합니다. 확인되면 이 표의 `접근 방법`·`계정 위치`·`확인 상태`를 고친 뒤 작업을 계속합니다.
+2. `접근 방법`이 `미확인`이면 `찾는 방법`의 [조회] 명령으로 사용할 수 있는 경로를 먼저 확인합니다. 확인한 접근 방법과 계정 위치를 작업에 사용하고 필요하면 이 표에 반영합니다.
 3. 경로를 찾지 못했거나 권한이 거부되면 `막히면 요청할 것` 칸의 내용만 사용자에게 요청합니다. 그 단계에 의존하지 않는 작업은 계속합니다.
 4. 비밀번호·토큰·개인키 값은 쓰지 않습니다. 파일 경로, Secret 이름, 계정 이름처럼 위치만 적습니다.
 5. 서버 이름과 주소는 [서버·노드](servers.md), [네트워크](network.md)가 원본입니다. 이 문서에 다시 적지 않습니다.
@@ -143,7 +143,7 @@ realm 설정, client·그룹·역할, 사용자 조회에 씁니다. 관리 화�
 
 | 항목 | 내용 |
 | --- | --- |
-| 접근 방법 | 저장소의 Make 타깃(`keycloak-setup`, `keycloak-access-apply`, `keycloak-org-sync`, `headlamp-oidc-setup`, `airflow-keycloak-client`, `iam-check`·`iam-up`). 타깃이 없는 설정은 `python3 deploy/keycloak/scripts/admin_env.py --env <Keycloak env> -- <명령>`으로 관리자 환경변수를 받아 Admin REST API 호출 |
+| 접근 방법 | 저장소의 Make 타깃(`keycloak-setup`, `keycloak-access-apply`, `keycloak-org-sync`, `headlamp-oidc-setup`, `airflow-keycloak-client`, `iam-keycloak-setup`·`iam-verify`). 타깃이 없는 설정은 `python3 deploy/keycloak/scripts/admin_env.py --env <Keycloak env> -- <명령>`으로 관리자 환경변수를 받아 Admin REST API 호출 |
 | 계정 위치 | Keycloak env의 `bootstrap-admin-username`·`bootstrap-admin-password`. CA는 `deploy/shared/certs/<SSO host>/keycloak-ca-bundle.pem` |
 | 완료 확인 | 각 타깃의 성공 문구. IAM은 [IAM 배포 후 확인](../../../iam/README.md#c-배포-후-확인)의 `iam-verify` 결과 확인 |
 | 확인 상태 | 저장소 선언. 서버 적용은 [대기 작업](pending.md#3-앱-배포) |

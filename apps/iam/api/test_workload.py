@@ -74,6 +74,11 @@ class WorkloadTest(unittest.TestCase):
         self.assertEqual(self.request("PUT", payload=self.payload)[0], 400)
         self.assertEqual(self.request()[1]["records"], [])
 
+    def test_health_checks_sqlite_without_exposing_records_or_requiring_a_token(self):
+        self.assertEqual(self.request(month="healthz", token=""), (200, {"status": "ok"}))
+        self.assertEqual(self.request("PUT", month="healthz", token="")[0], 405)
+        self.assertEqual(self.request(token="")[0], 401)
+
     def test_checks_signature_client_and_management_role(self):
         issuer = "https://keycloak.example/realms/test"
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

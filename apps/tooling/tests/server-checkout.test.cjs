@@ -30,7 +30,7 @@ function fixture(t) {
   for (const relative of ['airflow/env/k8s.env', 'airflow/env/build.env', 'monitoring/env/k8s.env',
     'headlamp/env/k8s.env', 'keycloak/env/prod.env', 'portal/env/prod/api.env',
     'portal/env/prod/web.env', 'minio/env/prod.env', 'portal/env/test/api.env', 'ftp/env/prod.env', 'registry/env/k8s.env',
-    'iam/env/prod.env']) {
+    'iam/env/prod.env', 'iam/env/build.env']) {
     const input = fs.readFileSync(path.join(root, 'deploy', relative), 'utf8');
     const sanitized = input.split('\n').map(line => {
       const key = line.split('=')[0];

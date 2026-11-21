@@ -42,13 +42,13 @@
 
 사내 관리 호스트의 opencode `ops` agent([정의](../.opencode/agents/ops.md))는 저장소 전체 checkout 하나에서 이미지를 빌드하고 배포·운영하며 저장소를 개발하지 않는다. 루트 지침의 개발 규칙은 적용하지 않는다. 요청받은 운영 작업을 에이전트가 끝까지 진행하는 것이 기본이다.
 
-- 코드·manifest·env 원본·스크립트·스킬·지침을 수정하지 않는다. 원인이 저장소에 있으면 보고하고 그 앱만 중단한다. 수정 가능 범위는 `shared/docs/infrastructure/`의 운영값·확인 상태·pending·별칭 표이며 커밋은 사람이 한다. checkout 갱신은 `git pull --ff-only`만 사용한다.
-- 권한: shell은 기본 허용이고 삭제(namespace·PV·CRD·`helm uninstall`)와 이력을 바꾸는 Git 명령만 거부한다. env·Secret은 진단에 필요하면 읽을 수 있으나 비밀값을 응답·운영 기록에 옮겨 적지 않는다. 승인 대기(`ask`) 규칙은 두지 않는다.
+- 코드·manifest·env 원본·스크립트·스킬·지침이 배포를 막으면 필요한 변경을 보고하고 그 앱만 중단한다. 공유 인프라 정보는 근거를 남겨 `shared/docs/infrastructure/`에서 갱신할 수 있다. 일상 진행 이력은 checkout 밖 [운영 기록](shared/docs/operations/01-checkout.md#운영-기록)을 권장한다. checkout 갱신은 `git pull --ff-only`로 한다.
+- 권한: OpenCode 편집 도구는 인프라 원본과 checkout 밖 운영 기록을 편집할 수 있다. 삭제(namespace·PV·CRD·`helm uninstall`)와 이력을 바꾸는 Git 명령은 권한에서 거부한다. env·Secret은 진단에 필요하면 읽을 수 있으나 비밀값을 응답·운영 기록에 옮겨 적지 않는다. 승인 대기(`ask`) 규칙은 두지 않는다.
 - 단계 표시: [조회]·[검사]·[변경]은 요청 범위에서 바로 실행한다. [승인]은 [배포 가이드의 기준](README.md#단계-표시)에 해당하는 변경에만 쓴다. DNS·인증서 발급·방화벽·계정 발급·제어면과 노드 설정도 agent가 [접근 경로](shared/docs/infrastructure/access.md)의 방법으로 수행한다.
 - 운영 agent는 요청 종류마다 스킬(`.opencode/skills/`) 하나로 시작한다: 배포·갱신 `server-deploy-routine`, 장애 확인 `incident-triage`, 설치 준비 점검 `server-readiness-check`, 저장소와 서버 대조 `deploy-drift-check`, 외부 전달용 상태 보고 `server-state-report`, 인프라 기록 갱신 `infra-record-sync`. 스킬은 이 폴더의 문서를 절차의 원본으로 가리키고 명령 블록을 두지 않는다. 스킬을 추가하면 [agent 정의](../.opencode/agents/ops.md)의 사용 권한과 요청별 스킬 표, `test_deploy_guides.py`의 `SKILL_SOURCES`를 함께 고친다. 요청 유형이 기존 스킬과 겹치는 스킬은 만들지 않는다. 판정 원본은 [배포 상태 대조](shared/docs/operations/04-drift.md)와 `shared/scripts/deploy_state.py`다.
 - 모든 앱은 `make <app>-check`, `make <app>-up`, `make <app>-smoke`, `make <app>-render`를 제공한다(Makefile 패턴 규칙이 `shared/scripts/app.py`를 호출). 의존 관계·입력·명령·공개 host·배포 단계·smoke 경로의 원본은 [apps.json](shared/apps.json)이며 `make ops-deploy APP=<app>`이 준비 검사(`shared/scripts/ops_preflight.py`) → `steps` → 대조를 수행한다. `steps`의 첫 단계는 `<app>-check`다. 클러스터 워크로드가 없는 설정 전용 앱은 `runtime`을 `null`로 두며 smoke·기록·대조를 하지 않는다.
 - 앱의 배포 명령·순서·성공 문구·선행 조건을 바꾸면 같은 변경에서 그 앱 가이드(`<app>/README.md`)를 갱신한다. 모든 배포에 필요한 반복 단계는 `<app>-up` 또는 `steps`에 넣는다.
-- 사내 빌드 이미지(Airflow·Portal)는 `make <app>-image`가 이 checkout에서 빌드해 사내 이미지 저장소로 push하고 `steps`에서 검사 다음 단계로 둔다. tag는 소스 tree와 build env 내용으로 자동으로 정하며(`shared/scripts/image_registry.py`의 `source_tag`), registry에 같은 tag가 있으면 빌드하지 않는다. tag를 저장소 파일에 직접 쓰게 만들지 않는다. 빌드 도구는 `make build-tools-install`이 설치한다.
+- 사내 빌드 이미지(Airflow·Portal·IAM)는 `make <app>-image`가 이 checkout에서 빌드해 사내 이미지 저장소로 push하고 `steps`에서 검사 다음 단계로 둔다. tag는 소스 tree와 build env 내용으로 자동으로 정하며(`shared/scripts/image_registry.py`의 `source_tag`), registry에 같은 tag가 있으면 빌드하지 않는다. tag를 저장소 파일에 직접 쓰게 만들지 않는다. 빌드 도구는 `make build-tools-install`이 설치한다.
 - 외부로 전달하는 내용에는 서버명·IP·사내 도메인을 쓰지 않는다. [별칭 표](shared/docs/infrastructure/aliases.json)의 별칭만 쓰고 `make ops-report`·`make ops-redact`의 출력만 전달한다. 가이드·스킬·agent 정의에는 IP를 적지 않는다.
 - `KUBE_CONTEXT`를 항상 명시한다. 배포 후 `ops-deploy` 요약의 `failedStep`이 null이고 `driftResultCode`가 0인지 확인한다. `make <app>-up`이 아닌 명령으로 배포했으면 `make deploy-record APP=<app>`으로 기록한다.
 - 이미 배포된 서버에 영향을 주는 변경(리소스 소유 이동, 타깃·입력 이름 변경, 재배포가 필요한 정의 변경)을 하면 같은 변경에서 [전환 런북](shared/docs/operations/05-transition.md)에 적용 여부 확인 명령과 적용 순서를 추가한다. 모든 서버에 적용된 항목은 런북에서 지운다.

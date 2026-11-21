@@ -153,7 +153,7 @@ SDWT S의 데이터            : min(앱 역할, org_roles 중 sdwt:S:<등급>�
 ## 설정
 
 런타임 설정은 `public/config.js`의 `window.__IAM_CONFIG__`(`keycloakUrl`, `realm`, `clientId`)입니다.
-기본값은 개발 Keycloak(`http://localhost:8180`, realm `portal`, client `iam`)이며 배포 이미지는 이 파일을 env로 다시 만듭니다.
+개발 기본값은 `http://localhost:8180`, realm `portal`, client `iam`입니다. 운영 배포는 IAM·Keycloak env의 공개 설정을 `config.js` ConfigMap으로 만들어 웹 컨테이너에 마운트합니다.
 
 ## 업무 부하
 
@@ -202,8 +202,8 @@ make local-keycloak-dummy DUMMY_LINES=12 DUMMY_TOTAL_USERS=2000
 
 기존 일반 사용자와 소속 그룹은 보존합니다. 예약 EPID와 실제 사용자가 충돌하면 중단합니다. 기존 더미의 `/org` 소속은 하나로 맞추고 다른 그룹·직접 권한은 유지합니다. 같은 규모로 재실행해도 사용자를 중복 생성하지 않습니다. 자동으로 라인·SDWT·목표 범위 밖의 더미를 삭제하지 않으므로 규모를 줄이는 용도로는 사용하지 않습니다. 작업 후 실제 사용자 수·더미의 단일 소속·직책 수와 일반 사용자 속성·소속·직접 권한 보존을 조회해 검증합니다.
 
-realm JSON에는 Portal 개발용 그룹(`/SDWT-A/…`)이 들어 있습니다. `/org` 소속 트리는 `make keycloak-sdwt-init` 또는 조직 탭의 SDWT 추가로 구성합니다. 개발 realm에 IAM 설정을 맞출 때는 [IAM 배포 도구](../../deploy/iam/README.md)를 같은 개발 연결 및 realm에 실행합니다.
+realm JSON에는 Portal 개발용 그룹(`/SDWT-A/…`)이 들어 있습니다. `/org` 소속 트리는 `make keycloak-sdwt-init` 또는 조직 탭의 SDWT 추가로 구성합니다. 개발 realm에 IAM 설정을 맞출 때는 개발 Keycloak 연결과 realm을 지정해 `make iam-keycloak-setup`을 실행하고, 확인한 계획은 `IAM_KEYCLOAK_APPLY=1`로 적용합니다.
 
-## 남은 작업
+## 운영 배포
 
-[IAM 운영 배포](../../deploy/iam/README.md)는 카탈로그의 설정 전용 앱으로 Keycloak을 구성합니다. 웹·업무 부하 API의 배포 이미지와 Kubernetes 정의는 남아 있습니다.
+[IAM 운영 배포](../../deploy/iam/README.md)가 Keycloak을 구성하고 웹과 업무 부하 API 이미지를 빌드해 Zot에 올립니다. Kubernetes에서 HTTPS 공개 경로와 SQLite 영속 볼륨을 함께 배포합니다.

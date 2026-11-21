@@ -8,7 +8,8 @@ checkout·설정·인증서·kubeconfig·백업 보관 위치와 운영 책임�
 
 | 용도 | 위치·관리 방법 | 근거·확인 상태 |
 | --- | --- | --- |
-| 관리 호스트 저장소 (`khplanew01`, 10.172.40.117) | 저장소 전체를 git clone해 사용하고 `git pull`로 갱신 | 사용자 확인: 전체 git clone. 실제 서버 경로는 미확인이며 [저장소 clone](../operations/01-checkout.md#2-처음-clone)의 `/appdata/etchax`는 안내·예시 |
+| 관리 호스트 저장소 (`khplanew01`, 10.172.40.117) | 저장소 전체를 git clone해 사용하고 `git pull --ff-only`로 갱신 | 사용자 확인: 전체 git clone. 실제 서버 경로는 미확인이며 [저장소 clone](../operations/01-checkout.md#2-처음-clone)의 `/appdata/etchax`는 안내·예시 |
+| 운영 agent 기록 | 관리 호스트에서 `ops`를 실행하는 계정의 `~/.local/state/tailwind/ops/` | `state.md`와 `progress.md`. 디렉터리 권한 `0700`. [운영 기록](../operations/01-checkout.md#운영-기록) |
 | 사내 ops 작업 루트·이미지 빌드 위치 | 위 관리 호스트 저장소와 같은 checkout | 사용자 확정: 전체 저장소를 그대로 사용. [운영 agent 작업 루트](../operations/01-checkout.md#운영-agent-작업-루트). 실제 서버 경로·빌드 도구 설치 여부 미확인 |
 | 관리 호스트 외부 앱 설정 | `/appdata/etchax-config/<app>/` | 안내·예시: [외부 env를 쓰는 경우](../operations/02-deploy.md#외부-env를-쓰는-경우). 앱 도구에 실제 외부 env 경로 명시. 실제 서버 경로 확인 필요 |
 | 앱별 기본 env·Secret 입력 | `deploy/<app>/env/`와 앱별 별도 입력 | [환경설정](../configuration/environment.md). 실제 사용 파일은 앱별 절차에서 확인 |

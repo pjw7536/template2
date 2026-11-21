@@ -72,11 +72,14 @@ keycloak-access-test:
 local-keycloak-dummy:
 	python3 local/keycloak/scripts/seed_org_dummy.py $(if $(filter 1,$(DUMMY_REMOVE)),--remove,$(if $(DUMMY_LINES),--lines $(DUMMY_LINES) --total-users $(or $(DUMMY_TOTAL_USERS),2000),))
 
-# IAM이 쓰는 Keycloak 설정을 준비하거나 실제 적용 상태를 조회합니다.
+# IAM의 이미지와 Keycloak 설정을 개별 실행합니다.
 IAM_ENV ?= $(CURDIR)/deploy/iam/env/prod.env
-.PHONY: iam-keycloak-setup iam-verify
+IAM_BUILD_ENV ?= $(CURDIR)/deploy/iam/env/build.env
+.PHONY: iam-image iam-keycloak-setup iam-verify
+iam-image:
+	python3 deploy/iam/scripts/manage.py publish --build-env "$(IAM_BUILD_ENV)" --registry-env "$(REGISTRY_ENV)" --push-env "$(REGISTRY_PUSH_ENV)"
 iam-keycloak-setup:
-	@$(MAKE) --no-print-directory $(if $(filter 1,$(IAM_KEYCLOAK_APPLY)),iam-up,iam-check)
+	$(KEYCLOAK_ADMIN) python3 deploy/iam/scripts/setup_keycloak.py --env "$(IAM_ENV)" $(if $(filter 1,$(IAM_KEYCLOAK_APPLY)),--apply)
 iam-verify:
 	$(KEYCLOAK_ADMIN) python3 deploy/iam/scripts/setup_keycloak.py --env "$(IAM_ENV)" --verify
 

@@ -187,7 +187,7 @@ DAG·테스트만 바뀐 커밋은 이미지 tag가 같으므로 `make airflow-c
    ```
    기대 결과는 `registrationEmailAsUsername: False`와 `original_deptname: True`입니다. 차이가 있으면 [변경] [Keycloak 업데이트](../../../keycloak/README.md#b-업데이트)를 실행한 뒤 위 조회를 반복합니다.
 2. Headlamp가 설치된 환경은 [조회] [기존 client 대조](../../../headlamp/docs/02-authentication.md#2-기존-client-대조)로 redirect·PKCE·그룹 mapper를 확인합니다. 차이나 승인된 신규 관리자가 있으면 [변경] [Headlamp 업데이트](../../../headlamp/README.md#b-업데이트)를 수행한 뒤 [배포 후 확인](../../../headlamp/README.md#c-배포-후-확인)을 실행합니다.
-3. IAM 설정을 이미 적용한 환경은 저장소 밖 운영 env의 `IAM_PUBLIC_URL`을 [IAM 공개 주소](../infrastructure/services.md#서비스-접속-주소)와 대조합니다. 같은 입력으로 [조회] [IAM 배포 후 확인](../../../iam/README.md#c-배포-후-확인)을 실행해 client redirect·web origin과 조직 역할·관리 권한·카탈로그를 확인합니다. 차이가 있으면 [IAM 업데이트](../../../iam/README.md#b-업데이트)에 따라 적용한 뒤 확인을 반복합니다.
+3. [조회] 이전 IAM 설정만 반영했으면 `kubectl --context "<context>" -n iam get deployment,pvc,ingress`로 웹·API·SQLite PVC의 존재 여부를 확인합니다. 기존의 저장소 밖 IAM env에 `IAM_STORAGE_NODE`와 `IAM_DATA_HOST_PATH`가 없으면 [IAM 입력](../../../iam/README.md#입력)의 키를 추가합니다. [변경] 워크로드가 없으면 [IAM 최초 설치](../../../iam/README.md#a-최초-설치), 이미 있으면 [IAM 업데이트](../../../iam/README.md#b-업데이트)를 시행합니다. 공개 주소는 [서비스 접속 주소](../infrastructure/services.md#서비스-접속-주소)와 대조하고 [배포 후 확인](../../../iam/README.md#c-배포-후-확인)을 반복합니다.
 
 ## 완료 확인
 
@@ -197,7 +197,7 @@ DAG·테스트만 바뀐 커밋은 이미지 tag가 같으므로 `make airflow-c
 make drift-check APP=<app> KUBE_CONTEXT="<context>" DRIFT_JSON=1
 ```
 
-`resultCode`가 0이면 [대기 작업](../infrastructure/pending.md)에서 확인된 항목을 정리합니다.
+`resultCode`가 0이면 해당 항목의 확인 결과를 [운영 기록](01-checkout.md#운영-기록)에 남깁니다.
 
 ## 실패했을 때
 

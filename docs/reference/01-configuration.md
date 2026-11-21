@@ -31,6 +31,7 @@ env 파일의 위치·작성·검사·적용 절차는 실행 환경별 문서�
 | --- | --- | --- |
 | Cloudera Impala ODBC 2.8.3.1008 | `BIGDATAQUERY_ODBC_DEB_URL` | `deploy/airflow/env/build.env`. 주소는 [미러 원본](../../deploy/shared/docs/infrastructure/repositories.md#패키지chartartifact-주소) |
 | Portal 빌드 기반 이미지·패키지 미러(Python 3.12 bullseye, Node 20 alpine, Debian·PyPI·npm·Alpine) | `PYTHON_BASE_IMAGE`, `NODE_BASE_IMAGE`, `APT_DEBIAN_REPOSITORY`, `PIP_INDEX_URL`, `NPM_REGISTRY`, `ALPINE_REPOSITORY_MIRROR` | `deploy/portal/env/prod/build.env`. `make portal-image`가 Dockerfile의 ARG로 전달 |
+| IAM 빌드 기반 이미지·패키지 미러 | `NODE_BASE_IMAGE`, `NGINX_BASE_IMAGE`, `PYTHON_BASE_IMAGE`, `NPM_REGISTRY`, `PIP_INDEX_URL`, `PIP_TRUSTED_HOST` | `deploy/iam/env/build.env`. `make iam-image`가 각 Dockerfile의 ARG로 전달 |
 
 ## 주요 설정 그룹
 

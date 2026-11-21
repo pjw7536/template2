@@ -385,8 +385,10 @@ class AppDispatcherTests(unittest.TestCase):
     def test_settings_only_app_has_no_smoke_or_record(self):
         calls = []
         run = lambda argv, **kwargs: calls.append(argv) or self.result()
-        self.assertEqual(app_commands.main(['smoke', 'iam', '--context', 'ctx'], run=run), 0)
-        self.assertEqual(app_commands.record('iam', 'ctx', {}, run), 0)
+        catalog = {'apps': {'settings': {'runtime': None}}}
+        with patch.object(registry, 'read_catalog', return_value=catalog):
+            self.assertEqual(app_commands.main(['smoke', 'settings', '--context', 'ctx'], run=run), 0)
+            self.assertEqual(app_commands.record('settings', 'ctx', {}, run), 0)
         self.assertEqual(calls, [])
 
 

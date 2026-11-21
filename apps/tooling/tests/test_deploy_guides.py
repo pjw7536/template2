@@ -273,6 +273,14 @@ class DeployGuideTests(unittest.TestCase):
         self.assertIn('표시가 없는 명령 블록은 실행하지 않는다', definition)
         self.assertIn('deploy/shared/docs/infrastructure/access.md', definition)
 
+    def test_ops_can_edit_infrastructure_and_external_records(self):
+        definition = AGENT.read_text().split('\n---\n', 1)[0]
+        rules = re.findall(r'- action: (edit|external_directory)\n\s+resource: "([^\"]+)"\n\s+effect: (\w+)', definition)
+        records = '~/.local/state/tailwind/ops/*'
+        self.assertEqual(rules, [('edit', '*', 'deny'),
+                                 ('edit', 'deploy/shared/docs/infrastructure/*', 'allow'),
+                                 ('edit', records, 'allow'), ('external_directory', records, 'allow')])
+
     def test_agent_definition_and_skills_use_aliases_only(self):
         table = json.loads((ROOT / 'deploy/shared/docs/infrastructure/aliases.json').read_text())
         real = [item[key] for group in ('nodes', 'addresses') for item in table[group].values() for key in ('name', 'ip') if key in item]

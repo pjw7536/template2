@@ -25,7 +25,7 @@
 - 7: `make build-tools-check` 뒤 `make build-tools-install`을 실행한다. sudo 권한이 없으면 필요한 조치를 요청하고 멈춘다. 설치 후 `make portal-image`를 실행한다.
 - 8: `incident-triage`를 적용해 `make ops-diagnose APP=portal`을 실행하고, 출력이 가리키는 가이드 행의 조치만 한 번 수행하거나 보고한다. Pod·Secret을 직접 삭제·수정하지 않는다.
 - 9: `server-readiness-check`를 적용해 앱별 `make ops-preflight`와 `사전 준비`의 완료 확인을 실행한다. 항목별 상태(완료/미완료/확인 필요)·근거·다음 조치를 보고한다. DNS 미등록은 배포를 막지 않는 남은 일로 분류한다. 배포를 실행하지 않는다.
-- 10: `infra-record-sync`를 적용해 조회로 확인되는 행만 원본을 `서버 조회`로 고치고 pending 행을 삭제한다. 조회하지 않은 항목의 상태는 바꾸지 않는다.
+- 10: `infra-record-sync`를 적용해 조회 결과와 남은 일을 기록한다. 공유 원본을 갱신한 경우 수정 경로와 확인 근거를 보고한다.
 - 11: `make ops-deploy APP=registry`를 실행한다. 요약의 `blocked`에 공용 TLS 항목이 있으면 접근 경로의 `인증서 발급` 절로 파일을 준비하고 같은 명령을 다시 실행한다. 배포 뒤 접근 경로의 `노드 명령 실행` 방법으로 대상 워커별 CRI pull을 확인해 보고한다. 접근이 거부되면 시도한 명령과 그 절의 `막히면 요청할 것`을 요청하고, 가능했던 확인 결과를 남긴다.
 - 세션은 해당 스킬이 가리키는 배포 가이드(`deploy/README.md`와 앱 가이드)와 필요한 상세 절차에서 단계 표시가 있는 단계만 실행한다. 표시가 없는 명령 블록은 실행하지 않는다. 대화형 명령을 실행하지 않는다. 루트 `AGENTS.md`의 개발 규칙(요청 분류, ExecPlan, 개발용 스킬)은 적용하지 않는다.
 - 모든 요청에서 `KUBE_CONTEXT`를 명시하고, 인프라 문서 외 파일을 수정하지 않으며, commit·push와 namespace·PV 삭제를 하지 않는다.

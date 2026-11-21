@@ -315,7 +315,7 @@ kubectl --context "<context>" -n kube-system get pods -l component=kube-apiserve
 | CA | 모든 API server에서 Keycloak discovery·JWKS의 DNS·HTTPS 검증 가능 |
 | 기존 관리자 접속 | `/readyz`는 `ok`, 노드 목록 조회 성공 |
 
-**완료 기준:** 모든 API server에 같은 인증 계약이 적용됐고 기존 관리자 접속이 정상입니다. 적용 결과는 [서버 적용 대기 작업](../infrastructure/pending.md)의 해당 행에 반영합니다.
+**완료 기준:** 모든 API server에 같은 인증 계약이 적용됐고 기존 관리자 접속이 정상입니다. 적용 결과는 [운영 기록](../operations/01-checkout.md#운영-기록)에 남깁니다.
 
 ## CA 교체
 

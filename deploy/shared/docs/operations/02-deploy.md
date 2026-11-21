@@ -99,7 +99,7 @@ smoke가 확인하지 않는 기능은 아래 시나리오로 확인합니다. �
 
 ### 1. 경로별 HTTPS 확인
 
-[조회] 관리 호스트에서 backend Worker → APP VIP → DNS 순서로 같은 도메인·경로를 확인하면 어느 구간이 막혔는지 알 수 있습니다. Portal은 `/api/v1/health/`, Airflow는 `/api/v2/monitor/health`입니다. `<CA PEM 파일>`은 [사내 CA 묶음](../../../README.md#사내-ca-묶음)의 `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`입니다.
+[조회] 관리 호스트에서 backend Worker → APP VIP → DNS 순서로 같은 도메인·경로를 확인하면 어느 구간이 막혔는지 알 수 있습니다. Portal은 `/api/v1/health/`, Airflow는 `/api/v2/monitor/health`, IAM은 `/api/workload/healthz`입니다. `<CA PEM 파일>`은 [사내 CA 묶음](../../../README.md#사내-ca-묶음)의 `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem`입니다.
 
 ```bash
 curl --fail --show-error --connect-timeout 5 --max-time 20 --cacert <CA PEM 파일> \
@@ -117,6 +117,7 @@ OS가 해당 CA를 신뢰하면 `--cacert`를 생략할 수 있습니다. 인증
 | 앱 | 시나리오 |
 | --- | --- |
 | Keycloak | HTTPS → 사내 OIDC 로그인 → realm·사용자 claim |
+| IAM | HTTPS → 플랫폼 관리자 로그인 → 권한 화면과 업무 부하 월별 조회 |
 | Portal | 로그인 callback → API → 로그아웃, 시험 파일 업로드·다운로드 |
 | Airflow | UI 로그인·health, Portal 연동 시 시험 DAG 트리거·결과 |
 | Monitoring / Headlamp | Grafana 지표·target / Keycloak 로그인·그룹별 리소스 조회 |
@@ -126,6 +127,6 @@ OS가 해당 CA를 신뢰하면 `--cacert`를 생략할 수 있습니다. 인증
 ### 3. 결과 기록
 
 context·namespace, 커밋·이미지·chart 버전과 함께 정적 검사, 리소스 상태, 접속·기능 검증의 결과를 나누어 적고 미완료 항목과 다음 조치를 덧붙입니다.
-비밀값은 기록하지 않으며 접근하지 못했거나 확인 대기 중인 항목은 성공으로 표시하지 않습니다. 운영값이 바뀌었으면 [인프라 정보](../infrastructure/README.md)를 갱신합니다.
+실행 결과는 [운영 기록](01-checkout.md#운영-기록)을 권장합니다. 공유할 운영값은 [인프라 원본](../infrastructure/README.md#기록-규칙)에 반영할 수 있습니다. 비밀값은 기록하지 않으며 접근하지 못했거나 확인 대기 중인 항목은 성공으로 표시하지 않습니다.
 
 **다음 단계:** [운영](03-operations.md)

@@ -14,6 +14,7 @@ import jwt
 METRICS = ("equipment", "spc", "fdc", "apc", "pm", "lotHold")
 DIFFICULTIES = ("낮음", "보통", "높음")
 MONTH_PATH = re.compile(r"/api/workload/([1-9][0-9]{3}-(?:0[1-9]|1[0-2]))")
+HEALTH_PATH = "/api/workload/healthz"
 MAX_BODY = 4 * 1024 * 1024
 
 
@@ -149,22 +150,31 @@ def create_app(database, authorize):
 
     def app(environ, start_response):
         status = "200 OK"
+        path = environ["PATH_INFO"]
+        method = environ["REQUEST_METHOD"]
         try:
-            match = MONTH_PATH.fullmatch(environ["PATH_INFO"])
-            if not match:
-                raise RequestError("404 Not Found", "업무 부하 주소를 확인하세요.")
-            method = environ["REQUEST_METHOD"]
-            if method not in {"GET", "PUT"}:
-                raise RequestError("405 Method Not Allowed", "지원하지 않는 요청입니다.")
-            authorize(environ.get("HTTP_AUTHORIZATION", ""))
-            month = match.group(1)
+            match = MONTH_PATH.fullmatch(path)
+            health = path == HEALTH_PATH
+            if health:
+                if method != "GET":
+                    raise RequestError("405 Method Not Allowed", "지원하지 않는 요청입니다.")
+            else:
+                if not match:
+                    raise RequestError("404 Not Found", "업무 부하 주소를 확인하세요.")
+                if method not in {"GET", "PUT"}:
+                    raise RequestError("405 Method Not Allowed", "지원하지 않는 요청입니다.")
+                authorize(environ.get("HTTP_AUTHORIZATION", ""))
             with closing(sqlite3.connect(database)) as connection, connection:
-                if method == "GET":
+                if health:
+                    connection.execute("SELECT 1 FROM workload_month LIMIT 1").fetchone()
+                    result = {"status": "ok"}
+                elif method == "GET":
                     row = connection.execute(
-                        "SELECT revision, payload FROM workload_month WHERE month = ?", (month,)
+                        "SELECT revision, payload FROM workload_month WHERE month = ?", (match.group(1),)
                     ).fetchone()
                     result = {"revision": row[0], **json.loads(row[1])} if row else {"revision": 0, "records": []}
                 else:
+                    month = match.group(1)
                     revision, payload = read_payload(environ)
                     serialized = json.dumps(payload, ensure_ascii=False)
                     # 다른 관리자가 같은 월을 먼저 저장했으면 입력을 덮어쓰지 않습니다.

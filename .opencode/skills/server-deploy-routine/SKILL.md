@@ -36,11 +36,11 @@ description: 사내 관리 호스트에서 Kubernetes 앱(공용 Traefik·Keyclo
 | Headlamp | [deploy/headlamp/README.md](../../../deploy/headlamp/README.md) | `headlamp` | ingress, Keycloak |
 | FTP | [deploy/ftp/README.md](../../../deploy/ftp/README.md) | `etch-ftp` | 없음 |
 | Portal | [deploy/portal/README.md](../../../deploy/portal/README.md) | `tailwind-internal` | ingress, Keycloak, MinIO, Registry |
-| 권한관리(`iam`) | [deploy/iam/README.md](../../../deploy/iam/README.md) | 없음(Keycloak 설정만) | Keycloak |
+| 권한관리(`iam`) | [deploy/iam/README.md](../../../deploy/iam/README.md) | `iam` | ingress, Keycloak, Registry |
 
 의존 관계의 원본은 `deploy/shared/apps.json`의 `dependsOn`이다.
 
 ## 원칙
 - 필요한 명령이 가이드에 없거나 실제 결과가 기대와 다르면 마지막 성공 단계, 확인된 차이, 재개 명령을 보고한다.
-- 저장소 파일을 고치지 않는다. 배포를 막는 원인이 저장소에 있으면 원인·필요한 수정·영향을 보고하고 그 앱만 멈춘다. 운영 기록(`deploy/shared/docs/infrastructure/`)만 고칠 수 있다.
+- 배포를 막는 원인이 저장소에 있으면 원인·필요한 수정·영향을 보고하고 그 앱만 멈춘다. 상태와 변경 제안은 [운영 기록](../../../deploy/shared/docs/operations/01-checkout.md#운영-기록)에 남기는 것을 권장한다.
 - PV·PVC·namespace·DB를 삭제하지 않는다. 비밀값을 응답과 운영 기록에 옮겨 적지 않는다.

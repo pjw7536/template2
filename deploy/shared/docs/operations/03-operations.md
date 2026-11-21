@@ -10,7 +10,7 @@ Git 갱신만으로 실행 중인 앱·Secret·DB는 바뀌지 않습니다. 변
 | 변경 | 반영 |
 | --- | --- |
 | 문서 | 클러스터 적용 불필요 |
-| 앱 코드(Airflow·Portal) | [변경] 이미지 tag가 소스 내용으로 자동으로 바뀜 → `ops-deploy`가 `<app>-image` 단계에서 빌드·push한 뒤 배포 |
+| 앱 코드(Airflow·Portal·IAM) | [변경] 이미지 tag가 소스 내용으로 자동으로 바뀜 → `ops-deploy`가 `<app>-image` 단계에서 빌드·push한 뒤 배포 |
 | Airflow DAG 파일만 | 재배포 없이 DAG 폴더에 반영. [Airflow 가이드](../../../airflow/README.md) |
 | manifest·chart 설정·env | [변경] `ops-deploy`. Secret 변경은 Pod 재시작이 있어야 반영되며 각 앱의 `up`이 처리 |
 | 저장소 밖 env의 값 | [변경] [운영 입력 파일](../infrastructure/access.md#운영-입력-파일)을 고친 뒤 같은 env 변수(예: `AIRFLOW_ENV=<경로>`)를 붙여 `ops-deploy` |
@@ -31,7 +31,7 @@ Git 갱신만으로 실행 중인 앱·Secret·DB는 바뀌지 않습니다. 변
 
 [Worker 추가](../kubernetes/worker.md)에서 프로그램 준비 → 가입 → Ready·네트워크 확인 순서로 진행합니다. 새 서버에서 하는 단계는 [가입 전 노드](../infrastructure/access.md#가입-전-노드), CP1에서 하는 단계는 [노드 명령 실행](../infrastructure/access.md#노드-명령-실행) 절의 방법으로 수행합니다.
 
-- 새 노드의 이름·주소·역할은 [서버·노드](../infrastructure/servers.md)와 [별칭 표](../infrastructure/aliases.json)에 기록합니다.
+- 새 노드의 이름·주소·역할은 [서버·노드](../infrastructure/servers.md)와 [별칭 표](../infrastructure/aliases.json)에 반영할 수 있습니다. 갱신한 파일과 확인 근거를 보고합니다.
 - 앱 데이터를 둘 Worker면 [Worker 앱 데이터 경로](../infrastructure/operations.md#worker-앱-데이터-경로와-이전)의 디스크 확인을 먼저 합니다.
 - 외부 HTTPS 진입점으로도 사용할 때만 [Traefik·VIP 확장](../ingress/expand.md)을 추가로 진행합니다. backend 변경은 [승인] 단계입니다. Traefik이 아직 없는 클러스터면 [Traefik 셋업](../ingress/setup.md)입니다.
 - Worker 추가만으로 앱이나 DB가 옮겨지지 않습니다. 앱의 실행 노드는 각 앱 env·manifest의 배치 입력으로 정합니다.

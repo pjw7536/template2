@@ -77,7 +77,7 @@
    | `failedStep` | `null`이면 모든 단계 성공. `preflight`면 준비 검사에서 막힘. 그 밖에는 실패한 단계 이름 | `null`이 아니면 6번 |
    | `driftResultCode` | `0` 일치 또는 설정 전용 앱의 대조 생략, `1` 불일치·경고, `2` 판정 불가 | `0`이 아니면 `make drift-check APP=<app> KUBE_CONTEXT="<context>"`로 근거 조회. 설정 전용 앱은 해당 가이드의 검증 출력 확인 |
    | `blocked` | 저장소 도구로 해결하지 못한 준비 항목. `item`·`detail`과, 있으면 `command`·`reference` | `reference`가 가리키는 [접근 경로](shared/docs/infrastructure/access.md) 절로 해결한 뒤 같은 명령을 다시 실행 |
-   | `pending` | 배포는 끝났지만 남은 일(DNS 등록 등) | `reference`의 절로 수행하고, 못 하면 [pending](shared/docs/infrastructure/pending.md)에 기록 |
+   | `pending` | 배포는 끝났지만 남은 일(DNS 등록 등) | `reference`의 절로 수행하고, 못 하면 [운영 기록](shared/docs/operations/01-checkout.md#운영-기록)에 기록 |
 
    `failedStep`이 `null`이고 `driftResultCode`가 `0`이면 성공입니다.
 6. 단계가 실패하면 앱 가이드의 `문제 해결과 멈춤 조건`에서 같은 오류를 찾습니다. 조치가 적혀 있으면 한 번 수행하고 같은 명령을 다시 실행합니다. 다시 실패하거나 멈춤 조건에 해당하거나 가이드에 없는 오류면 그 앱만 멈추고 실패한 명령·종료 코드·오류 마지막 20줄을 보고합니다.
@@ -93,7 +93,7 @@
 - `kubectl apply -k deploy/shared/ingress`를 직접 실행하지 않습니다. 공용 Traefik의 감시 namespace와 VIP 배치가 기본값으로 돌아갑니다. `make ops-deploy APP=ingress`를 씁니다.
 - `make k8s-env APP=keycloak ...`을 실행하지 않습니다. 기존 Keycloak Secret을 덮어씁니다.
 - Portal overlay를 `kubectl apply -k`로 직접 적용하지 않습니다. 이미지 tag가 `auto`로 남습니다.
-- 운영 agent는 저장소 파일(코드·manifest·env·스크립트·문서)을 수정하지 않습니다. 예외는 `deploy/shared/docs/infrastructure/`의 운영 기록뿐이며, 검사를 통과시키려고 파일을 고치지 않습니다. 다른 입력값이 필요하면 [운영 입력 파일](shared/docs/infrastructure/access.md#운영-입력-파일)을 씁니다.
+- 검사를 통과시키려고 배포 원본을 고치지 않습니다. 다른 입력값이 필요하면 [운영 입력 파일](shared/docs/infrastructure/access.md#운영-입력-파일)을 씁니다.
 - 대화형 명령(`vi`, 입력을 기다리는 `read`, 비밀번호 프롬프트)을 실행하지 않습니다. 파일은 비대화형으로 쓰고 비밀값은 파일로 전달합니다.
 
 ## 앱 설치 순서
@@ -110,14 +110,15 @@
 | 4 | [Headlamp](headlamp/README.md) | ingress, Keycloak, 제어면 API server OIDC |
 | 4 | [FTP](ftp/README.md) | 대상 노드·방화벽 |
 | 5 | [Portal](portal/README.md) | ingress, Keycloak, MinIO, Registry, 외부 PostgreSQL, 빌드 도구 |
-| 6 | [권한관리(IAM)](iam/README.md) | Keycloak |
+| 6 | [권한관리(IAM)](iam/README.md) | ingress, Keycloak, Registry, 공용 TLS, 빌드 도구, 데이터 Worker |
 
 클러스터와 관리 호스트가 아직 없다면 [공통 절차](shared/docs/README.md)의 클러스터 구축과 [관리 호스트 준비](shared/docs/operations/04-drift.md#관리-호스트-준비)를 먼저 합니다.
 
 ## 모든 작업 공통 시작
 
-1. [변경] checkout 갱신. `git pull`이 실패하면 현재 checkout으로 진행하고 실패를 보고에 남깁니다.
+1. [변경] 추적 파일의 변경을 확인한 뒤 checkout을 갱신합니다. pull에 실패하면 현재 checkout으로 진행하고 실패 이유와 관련 파일을 보고합니다.
    ```bash
+   git status --short --untracked-files=no
    git pull --ff-only
    git status --short
    git log -1 --oneline
@@ -152,7 +153,7 @@ make ingress-tls-up KUBE_CONTEXT="<context>" TLS_HOST=<공개 host> TLS_CERT_FIL
 
 ## 사내 CA 묶음
 
-Keycloak OIDC를 검증하는 앱(Airflow·Headlamp), 관리 API 도구, smoke가 사용합니다. `deploy/shared/certs/ca/`에 사내 Root·Issuing CA 파일이 있으면 준비 검사가 자동으로 만듭니다. CA를 교체했을 때 아래 명령으로 다시 만듭니다.
+Keycloak OIDC를 검증하는 앱(Airflow·Headlamp·IAM), 관리 API 도구, smoke가 사용합니다. `deploy/shared/certs/ca/`에 사내 Root·Issuing CA 파일이 있으면 준비 검사가 자동으로 만듭니다. CA를 교체했을 때 아래 명령으로 다시 만듭니다.
 
 [변경]
 ```bash
@@ -178,7 +179,7 @@ make ops-deploy APP=ingress KUBE_CONTEXT="<context>"
 
 ## 이미지 빌드 도구
 
-Airflow·Portal 이미지는 이 checkout에서 빌드해 사내 이미지 저장소로 push합니다. `make ops-deploy`가 검사 다음 단계(`<app>-image`)로 수행하며 nerdctl·BuildKit이 필요합니다. 준비 검사가 도구를 확인하고 없으면 설치합니다. 직접 확인·설치할 때 아래를 씁니다.
+Airflow·Portal·IAM 이미지는 이 checkout에서 빌드해 사내 이미지 저장소로 push합니다. `make ops-deploy`가 검사 다음 단계(`<app>-image`)로 수행하며 nerdctl·BuildKit이 필요합니다. 준비 검사가 도구를 확인하고 없으면 설치합니다. 직접 확인·설치할 때 아래를 씁니다.
 
 1. [검사]
    ```bash
@@ -202,7 +203,7 @@ push에는 [Registry](registry/README.md)가 먼저 배포돼 있어야 하고, 
 make <app>-image KUBE_CONTEXT="<context>"
 ```
 
-`<app>`은 `portal` 또는 `airflow`입니다. push 계정 파일을 별도로 두었으면 같은 명령에 `REGISTRY_PUSH_ENV=<경로>`를 지정합니다. 성공은 이미지별 `push 완료` 또는 `registry에 이미 있는 tag라 빌드하지 않았습니다` 출력으로 확인합니다. 앱 배포는 별도로 요청받았을 때 실행합니다.
+`<app>`은 `portal`, `airflow`, `iam` 중 하나입니다. push 계정 파일을 별도로 두었으면 같은 명령에 `REGISTRY_PUSH_ENV=<경로>`를 지정합니다. 성공은 이미지별 `push 완료` 또는 `registry에 이미 있는 tag라 빌드하지 않았습니다` 출력으로 확인합니다. 앱 배포는 별도로 요청받았을 때 실행합니다.
 
 ## 설치 준비 점검
 
@@ -226,14 +227,14 @@ make <app>-image KUBE_CONTEXT="<context>"
 | 근거 | 실행한 명령과 출력의 핵심 한 줄 |
 | 다음 조치 | `미완료`·`확인 필요`일 때만. 실행할 명령 또는 접근 경로 절과 막힌 경우 요청할 것 |
 
-마지막에 앱별 배포 가능 여부와 막힌 단계를 적습니다. 남은 서버 작업은 [pending](shared/docs/infrastructure/pending.md)에 반영합니다.
+마지막에 앱별 배포 가능 여부와 막힌 단계를 적습니다. 남은 서버 작업은 [운영 기록](shared/docs/operations/01-checkout.md#운영-기록)에 반영합니다.
 
 ## 배포 후 공통 마무리
 
 1. [조회] `make ops-deploy`가 출력한 JSON 줄에서 `failedStep`이 `null`이고 `driftResultCode`가 `0`인지 확인합니다. `driftResultCode`가 1·2이면 `make drift-check APP=<app> KUBE_CONTEXT="<context>"`로 근거를 조회합니다.
 2. [조회] 앱 가이드의 C를 실행합니다. smoke가 확인하지 않는 기능은 [화면 기능 확인](shared/docs/infrastructure/access.md#화면-기능-확인) 절의 방법으로 [기능 검증](shared/docs/operations/02-deploy.md#접속기능-검증) 시나리오를 확인합니다.
-3. [변경] JSON의 `pending`에 있는 남은 일(DNS 등록 등)을 `reference`의 접근 경로 절로 수행합니다. 수행하지 못한 일은 [pending](shared/docs/infrastructure/pending.md)에 행으로 남깁니다.
-4. [변경] 운영 기록: 서버에서 확인된 값이 [인프라 정보](shared/docs/infrastructure/README.md)와 다르면 해당 원본을 `서버 조회` 상태로 고치고, 완료된 pending 행을 삭제합니다. 처음 사용한 접근 방법은 [접근 경로](shared/docs/infrastructure/access.md)에 기록합니다. 날짜·완료 기록·비밀값은 쓰지 않습니다.
+3. [변경] JSON의 `pending`에 있는 남은 일(DNS 등록 등)을 `reference`의 접근 경로 절로 수행합니다. 수행하지 못한 일은 [운영 기록](shared/docs/operations/01-checkout.md#운영-기록)에 남깁니다.
+4. [변경] 적용 결과와 남은 일은 [운영 기록](shared/docs/operations/01-checkout.md#운영-기록)에 남기는 것을 권장합니다. 공유 인프라 정보를 갱신했다면 바꾼 파일과 조회 근거를 보고합니다.
 
 보고에는 다음을 담습니다.
 

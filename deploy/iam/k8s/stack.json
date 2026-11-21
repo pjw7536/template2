@@ -1,0 +1,191 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {"name": "iam"}
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolume",
+      "metadata": {"name": "iam-workload-data"},
+      "spec": {
+        "capacity": {"storage": "1Gi"},
+        "volumeMode": "Filesystem",
+        "accessModes": ["ReadWriteOnce"],
+        "persistentVolumeReclaimPolicy": "Retain",
+        "storageClassName": "",
+        "claimRef": {"namespace": "iam", "name": "iam-workload-data"},
+        "local": {"path": "/appdata/iam"},
+        "nodeAffinity": {
+          "required": {
+            "nodeSelectorTerms": [
+              {"matchExpressions": [{"key": "kubernetes.io/hostname", "operator": "In", "values": ["storage-node"]}]}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {"namespace": "iam", "name": "iam-workload-data"},
+      "spec": {
+        "accessModes": ["ReadWriteOnce"],
+        "volumeMode": "Filesystem",
+        "storageClassName": "",
+        "volumeName": "iam-workload-data",
+        "resources": {"requests": {"storage": "1Gi"}}
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {"namespace": "iam", "name": "iam-api"},
+      "spec": {
+        "selector": {"app.kubernetes.io/name": "iam-api"},
+        "ports": [{"name": "http", "port": 8000, "targetPort": "http"}]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {"namespace": "iam", "name": "iam-web"},
+      "spec": {
+        "selector": {"app.kubernetes.io/name": "iam-web"},
+        "ports": [{"name": "http", "port": 80, "targetPort": "http"}]
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {"namespace": "iam", "name": "iam-api"},
+      "spec": {
+        "replicas": 1,
+        "strategy": {"type": "Recreate"},
+        "selector": {"matchLabels": {"app.kubernetes.io/name": "iam-api"}},
+        "template": {
+          "metadata": {"labels": {"app.kubernetes.io/name": "iam-api"}},
+          "spec": {
+            "automountServiceAccountToken": false,
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "runAsGroup": 10001,
+              "seccompProfile": {"type": "RuntimeDefault"}
+            },
+            "containers": [{
+              "name": "api",
+              "image": "iam-api:render",
+              "imagePullPolicy": "IfNotPresent",
+              "ports": [{"name": "http", "containerPort": 8000}],
+              "env": [
+                {"name": "IAM_WORKLOAD_DB", "value": "/data/iam/workload.sqlite3"},
+                {"name": "IAM_KEYCLOAK_ISSUER", "value": "https://sso.invalid/realms/etch"},
+                {"name": "IAM_KEYCLOAK_CLIENT_ID", "value": "iam"},
+                {"name": "SSL_CERT_FILE", "value": "/etc/iam-ca/ca.crt"}
+              ],
+              "securityContext": {
+                "allowPrivilegeEscalation": false,
+                "readOnlyRootFilesystem": true,
+                "capabilities": {"drop": ["ALL"]}
+              },
+              "resources": {
+                "requests": {"cpu": "50m", "memory": "64Mi"},
+                "limits": {"cpu": "500m", "memory": "256Mi"}
+              },
+              "startupProbe": {
+                "httpGet": {"path": "/api/workload/healthz", "port": "http"},
+                "periodSeconds": 2,
+                "failureThreshold": 30
+              },
+              "readinessProbe": {"httpGet": {"path": "/api/workload/healthz", "port": "http"}},
+              "volumeMounts": [
+                {"name": "data", "mountPath": "/data/iam"},
+                {"name": "ca", "mountPath": "/etc/iam-ca", "readOnly": true},
+                {"name": "tmp", "mountPath": "/tmp"}
+              ]
+            }],
+            "volumes": [
+              {"name": "data", "persistentVolumeClaim": {"claimName": "iam-workload-data"}},
+              {"name": "ca", "configMap": {"name": "iam-keycloak-ca"}},
+              {"name": "tmp", "emptyDir": {"sizeLimit": "16Mi"}}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {"namespace": "iam", "name": "iam-web"},
+      "spec": {
+        "replicas": 1,
+        "selector": {"matchLabels": {"app.kubernetes.io/name": "iam-web"}},
+        "template": {
+          "metadata": {"labels": {"app.kubernetes.io/name": "iam-web"}},
+          "spec": {
+            "automountServiceAccountToken": false,
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 101,
+              "runAsGroup": 101,
+              "seccompProfile": {"type": "RuntimeDefault"}
+            },
+            "containers": [{
+              "name": "web",
+              "image": "iam-web:render",
+              "imagePullPolicy": "IfNotPresent",
+              "ports": [{"name": "http", "containerPort": 8080}],
+              "securityContext": {
+                "allowPrivilegeEscalation": false,
+                "readOnlyRootFilesystem": true,
+                "capabilities": {"drop": ["ALL"]}
+              },
+              "resources": {
+                "requests": {"cpu": "20m", "memory": "24Mi"},
+                "limits": {"cpu": "250m", "memory": "96Mi"}
+              },
+              "readinessProbe": {"httpGet": {"path": "/", "port": "http"}},
+              "volumeMounts": [
+                {"name": "config", "mountPath": "/usr/share/nginx/html/config.js", "subPath": "config.js", "readOnly": true},
+                {"name": "tmp", "mountPath": "/tmp"}
+              ]
+            }],
+            "volumes": [
+              {"name": "config", "configMap": {"name": "iam-web-config"}},
+              {"name": "tmp", "emptyDir": {"sizeLimit": "16Mi"}}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "Ingress",
+      "metadata": {
+        "namespace": "iam",
+        "name": "iam",
+        "annotations": {
+          "traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
+          "traefik.ingress.kubernetes.io/router.tls": "true"
+        }
+      },
+      "spec": {
+        "ingressClassName": "traefik",
+        "rules": [{
+          "host": "iam.invalid",
+          "http": {
+            "paths": [{
+              "path": "/",
+              "pathType": "Prefix",
+              "backend": {"service": {"name": "iam-web", "port": {"name": "http"}}}
+            }]
+          }
+        }]
+      }
+    }
+  ]
+}

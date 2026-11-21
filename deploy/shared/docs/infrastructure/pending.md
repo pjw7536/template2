@@ -5,7 +5,7 @@
 저장소 선언·확정된 목표와 실제 사내 서버 상태가 아직 맞지 않아 **서버에서 수행해야 하는 작업**의 목록입니다.
 값의 원본은 각 행의 원본 문서이며 이 문서에는 작업·현재 상태·절차만 둡니다. 기록 형식은 [공통 기록 규칙](README.md#기록-규칙)을 따릅니다.
 
-- 작업을 서버에 적용하고 확인하면 원본 문서의 현재 값을 갱신하고 이 문서의 행을 삭제합니다. 완료 기록은 남기지 않습니다.
+- 적용과 확인 결과는 [운영 기록](../operations/01-checkout.md#운영-기록)에 남기는 것을 권장합니다. 공유 원본을 갱신할 때는 근거를 확인한 뒤 해당 값을 갱신하고 완료된 행을 삭제합니다.
 - 새 작업은 해당 분류에 행을 추가합니다. 주체가 정해지지 않았으면 `미확인`으로 둡니다.
 - 주체는 운영 책임의 참조입니다. 요청받은 작업은 운영 agent가 [접근 경로](access.md)의 방법으로 직접 수행하고, 접근이 실제로 막혔을 때만 그 절의 `막히면 요청할 것`을 요청합니다.
 - 상태의 `미확인`은 서버 조회·사용자 확인이 없다는 뜻이며 미적용으로 단정하지 않습니다. 작업 전 실제 상태를 조회합니다.
@@ -48,7 +48,7 @@
 | Airflow DAG 공유 폴더 전환 | `khinfow01`의 공유 디렉터리를 스케줄러와 DAG Processor에 마운트 | 저장소 선언. 기존 DAG 백업·파일 이관·운영 재배포 및 목록 확인 필요 | [공유 폴더 전환](../../../airflow/docs/04-operations.md#공유-폴더-전환) | 운영자 |
 | Monitoring 배포 | Grafana·Prometheus·Alertmanager 접속과 지표 수집 | 저장 폴더 준비는 사용자 확인. 배포·접속 미확인 | [Monitoring 설치](../../../monitoring/README.md) | 운영자 |
 | Headlamp 배포 | `https://headlamp.etch.samsungds.net` 로그인 | 배치 노드·배포 미확인 | [Headlamp 설치](../../../headlamp/README.md) | 운영자 |
-| IAM 웹 공개 | [IAM 공개 주소](services.md#서비스-접속-주소)에서 웹과 업무 부하 API 제공 | 사용자 확정 주소. 웹·API 이미지와 Kubernetes 정의, DNS·TLS·Ingress 적용 확인 필요 | [IAM 배포](../../../iam/README.md#c-배포-후-확인) | 미확인 |
+| IAM 웹 공개 | [IAM 공개 주소](services.md#서비스-접속-주소)에서 웹과 업무 부하 API 제공 | 주소 확정. 웹·API 이미지와 Kubernetes 정의는 저장소에 있음. 운영 Zot 게시, DNS·TLS·Ingress와 로그인 확인 필요 | [IAM 배포](../../../iam/README.md#c-배포-후-확인) | 미확인 |
 | FTP 배포 | 대상 노드에 `etch.io/ftp-enabled=true` 라벨과 송수신 성공 | 대상 노드·배포 미확인 | [FTP 설치](../../../ftp/docs/01-install.md) | 운영자 |
 | Portal Kubernetes 전환 | 테스트·운영 Portal을 Docker 서버에서 이 클러스터로 이전 | 이미지 빌드·push, 운영 Worker, 외부 DB, 업무 파일 PVC, 로그인 client 적용 미확인 | [Portal 접속 구분](services.md#portal-테스트운영-접속-구분), [서버가 받는 이미지](repositories.md#서버가-받는-이미지), [Portal 설치](../../../portal/README.md) | 미확인 |
 

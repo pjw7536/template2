@@ -36,7 +36,7 @@
 | MinIO·Registry | `deploy/<app>/scripts/manage.py render` | `MINIO_ENV`·`REGISTRY_ENV` |
 | Airflow·Monitoring·Headlamp | `deploy/<app>/scripts/manage.py render` | `AIRFLOW_ENV`·`MONITORING_ENV`·`HEADLAMP_ENV`, Helm, chart 파일 |
 | Portal | `deploy/portal/scripts/up.py --render app` | 이미지 tag를 계산할 `apps/portal` 소스 |
-| IAM | 대조하지 않음 | 클러스터 워크로드가 없는 설정 전용 앱 |
+| IAM | Deployment 2개와 배포 기록 | Keycloak 원격 설정은 [iam-verify](../../../iam/README.md#c-배포-후-확인)로 별도 확인 |
 
 비교에서 제외하거나 따로 표시하는 항목:
 
@@ -75,7 +75,7 @@ JSON의 `resultCode`와 Python 직접 실행의 종료 코드는 다음과 같�
 [관리 호스트](../infrastructure/servers.md#서버-목록) `khplanew01`에서 배포·대조를 모두 실행합니다. 처음 한 번 준비하며 실행 위치는 따로 적지 않으면 관리 호스트입니다.
 
 1. **kubeconfig:** [변경] CP1의 `/etc/kubernetes/admin.conf`(또는 CP1 배포 계정의 `~/.kube/config`)를 관리 호스트 배포 계정의 `~/.kube/config`(권한 `0600`)에 둡니다. kubeconfig가 없는 관리 호스트에서는 CP1에 닿을 수 없고([노드 명령 실행](../infrastructure/access.md#노드-명령-실행)에도 kubeconfig가 필요합니다) 이 파일은 비밀값이므로, [Kubernetes API](../infrastructure/access.md#kubernetes-api) 절의 `막히면 요청할 것`을 따릅니다. `super-admin.conf`는 쓰지 않습니다. context 이름은 kubeadm 기본값 `kubernetes-admin@kubernetes`이며 [운영 위치](../infrastructure/operations.md#운영-파일과-데이터-위치)의 서버 기본 context에 기록합니다. 확인은 [Kubernetes API](../infrastructure/access.md#kubernetes-api) 절을 따릅니다.
-2. **저장소:** [변경] 관리 호스트에 [저장소 전체를 clone](01-checkout.md#2-처음-clone)하고 그 루트에서 운영 세션을 엽니다. 이후 갱신은 운영 agent가 작업 시작 때 `git pull --ff-only`로 합니다.
+2. **저장소:** [변경] 관리 호스트에 [저장소 전체를 clone](01-checkout.md#2-처음-clone)하고 그 루트에서 운영 세션을 엽니다. 이후 갱신은 [공통 시작](../../../README.md#모든-작업-공통-시작)의 추적 변경 검사와 fast-forward 절차를 따릅니다.
 3. **도구:** `kubectl`, `python3`, 각 chart lock의 버전 이상인 `helm`. [조회] 명령과 설치 기준은 [배포 도구](../kubernetes/prerequisites.md#3-배포-도구--관리-호스트)입니다. 이미지를 빌드하려면 [변경] `make build-tools-install`로 nerdctl·BuildKit을 설치합니다([관리 호스트 sudo](../infrastructure/access.md#관리-호스트-sudo) 필요). kubeconfig의 API server 주소 6443 포트에 접근할 수 있어야 합니다.
 4. **chart:** [변경] Git에서 제외된 `deploy/<app>/helm/vendor/*.tgz`를 준비합니다. 사내 미러에 접근되면 아래 명령으로 받고, 받지 못하면 [파일 반입](../infrastructure/access.md#파일-반입) 절의 방법으로 같은 파일을 둡니다. `make ops-deploy`도 chart가 없으면 준비 검사에서 같은 명령을 실행합니다.
    ```bash
@@ -110,7 +110,7 @@ make deploy-record APP=<app> KUBE_CONTEXT="<context>"
 | `KUBE_CONTEXT` | 배포한 context. 현재 kubectl context에 의존하지 않음 |
 | 앱의 env 변수(예: `AIRFLOW_ENV=<경로>`) | 저장소 밖 env로 배포했으면 배포 때와 같은 변수를 붙임. 그 파일의 SHA-256을 기록. 생략하면 저장소의 기본 파일을 기록. 변수 이름은 `apps.json`의 `inputs`이며 초기 계정 파일(`record: false`)은 기록하지 않음 |
 
-**기대 결과:** `배포 기록 저장: <namespace>/deploy-record-<app> commit=<12자리>`가 출력됩니다. 미커밋 변경을 포함해 배포했으면 `(미커밋 변경 포함)`이 붙습니다. 워크로드가 없는 설정 전용 앱(IAM)은 `배포 기록 생략`을 출력합니다.
+**기대 결과:** `배포 기록 저장: <namespace>/deploy-record-<app> commit=<12자리>`가 출력됩니다. 미커밋 변경을 포함해 배포했으면 `(미커밋 변경 포함)`이 붙습니다. 워크로드가 없는 설정 전용 앱은 `배포 기록 생략`을 출력합니다.
 
 **실패 확인:** namespace가 없으면 배포가 끝나지 않은 것입니다. 기록할 namespace는 입력 env의 `NAMESPACE`를 따르고, 없으면 `apps.json`의 값을 씁니다. 다른 namespace에 기록하려면 `python3 deploy/shared/scripts/deploy_state.py record <app> --context "<context>" --namespace <namespace>`를 사용합니다. 대조는 모든 namespace에서 기록을 찾습니다.
 저장소 안의 입력 파일은 루트 기준 상대 경로로 기록하므로 checkout 위치가 달라도 같은 파일로 비교합니다.
@@ -131,7 +131,7 @@ make deploy-record APP=<app> KUBE_CONTEXT="<context>"
 | `UNKNOWN record 배포 기록 없음` | 기록 기능 이전 배포이거나 미배포 | manifest가 일치하면 `make deploy-record`로 기준을 남김 |
 | `UNKNOWN manifest`·`query` | 렌더·context·권한·kubectl 오류 | 표시된 오류와 `kubectl --context "<context>" get ns`로 접근 확인. 접속 문제는 [Kubernetes API](../infrastructure/access.md#kubernetes-api) |
 
-대조 결과는 실제 서버 조회 근거입니다. 운영값이 [인프라 정보](../infrastructure/README.md)의 현재 값과 다르면 해당 원본을 `서버 조회` 상태로 갱신하고, 남은 서버 작업은 [서버 적용 대기 작업](../infrastructure/pending.md)에 반영합니다.
+대조 결과와 남은 서버 작업은 [운영 기록](01-checkout.md#운영-기록)을 권장합니다. 공유 인프라 값을 갱신할 때는 [기록 규칙](../infrastructure/README.md#기록-규칙)에 따라 원본 경로와 조회 근거를 남깁니다.
 
 ## 서버 상태 보고
 
@@ -149,11 +149,7 @@ make deploy-record APP=<app> KUBE_CONTEXT="<context>"
    | `APP` | 앱·그룹 이름. 생략하면 `all` |
    | `OPS_REPORT_OUT` | 저장할 파일. 생략하면 표준 출력 |
    | `OPS_REPORT_SKIP_DRIFT` | `1`이면 리소스 대조를 생략하고 상태만 수집. 대조가 오래 걸리거나 렌더가 안 될 때 쓰고 그 사실을 함께 알림 |
-2. [변경] 표준 오류에 `N-미등록-n = <실제 값>` 줄이 나오면 별칭 표에 등록한 뒤 1번을 다시 실행합니다. 등록할 수 없으면 그대로 두고 보고서의 `6. 별칭 미등록 값` 절을 남깁니다.
-   - 노드: `nodes`에 `"N-W3": {"name": "<노드명>", "ip": "<주소>", "role": "<용도>"}`. 별칭은 제어면 `N-CP<n>`, Worker `N-W<n>`, 관리 전용 `N-M<n>`을 이어서 씁니다.
-   - 그 밖의 주소: `addresses`에 `"<용도 별칭>": {"ip": "<주소>", "role": "<용도>"}`.
-   - 사내 host: `domains`에 `"<용도 별칭>": {"value": "<host 또는 구역>", "role": "<용도>"}`.
-   - 같은 변경을 [서버·노드](../infrastructure/servers.md) 또는 [네트워크](../infrastructure/network.md)에도 반영합니다. 별칭 표의 `version`은 커밋할 때 정하므로 바꾸지 않습니다.
+2. [변경] 표준 오류에 `N-미등록-n = <실제 값>` 줄이 나오면 [운영 기록](01-checkout.md#운영-기록)에 대응을 적습니다. 외부용 보고서에 임시 별칭과 `6. 별칭 미등록 값` 절을 유지하고 영구 별칭이 필요한 항목은 보고합니다.
 3. [검사] 보고서에 주소·서버명이 남지 않았는지 확인합니다. 출력이 없어야 합니다.
    ```bash
    grep -nE '([0-9]{1,3}\.){3}[0-9]{1,3}|samsungds' /tmp/ops-report.md
