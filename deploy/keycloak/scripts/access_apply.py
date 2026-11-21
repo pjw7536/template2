@@ -157,8 +157,9 @@ class Apply:
         self.warnings: list[str] = []
         self.clients: dict[str, dict] = {}
         self.public: list[dict] = []
+        self.catalog_group = None
 
-    def inspect(self):
+    def inspect(self, *, include_catalog=True):
         api = self.api
         realm = api.realm
         self.default_role = api.call("GET", f"roles/{segment('default-roles-' + realm.lower())}")
@@ -175,7 +176,8 @@ class Apply:
                 continue
             self.inspect_client(app, client)
             self.public.append(public_entry(app, client["id"]))
-        self.inspect_catalog()
+        if include_catalog:
+            self.inspect_catalog()
 
     @staticmethod
     def walk(groups: list[dict]):

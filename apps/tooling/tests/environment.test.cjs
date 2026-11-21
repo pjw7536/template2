@@ -378,7 +378,7 @@ if(process.env.MOCK_FAIL && a[0]==='get' && a[1].includes(process.env.MOCK_FAIL)
 if(a[0]==='get') {
  if(a[1]==='identity-provider/instances') console.log(process.env.MOCK_EXISTING==='true'?'oidc':'');
  else if(a[1]==='realms') console.log(process.env.MOCK_EXISTING==='true'?'master,unused'.replace(',', '\\n')+'\\netch':'master');
- else if(a[1]==='realms/etch') console.log(process.env.MOCK_EMAIL_AS_USERNAME || 'false');
+ else if(a[1]==='realms/etch') console.log(fs.existsSync(process.env.MOCK_REALM_STATE) ? 'false' : process.env.MOCK_EMAIL_AS_USERNAME || 'false');
  else if(a[1]==='groups') console.log(process.env.MOCK_EXISTING==='true'?'portal-members':'');
  else if(a[1]==='clients') console.log(fs.existsSync(process.env.MOCK_STATE)?'client-uuid':'');
  else if(a[1].endsWith('/default-client-scopes')) console.log(process.env.MOCK_SDWT_SCOPE==='1'?'profile\\nsdwt-access-v1':'profile');
@@ -387,6 +387,9 @@ if(a[0]==='get') {
  else console.log('{}');
 }
 if(a[0]==='create'&&a[1]==='clients')fs.writeFileSync(process.env.MOCK_STATE,'exists');
+if(a[0]==='update' && a[1]==='realms/etch' && a.includes('registrationEmailAsUsername=false') && process.env.MOCK_REALM_IGNORE_UPDATE!=='1') {
+ fs.writeFileSync(process.env.MOCK_REALM_STATE,'disabled');
+}
 `, { mode: 0o700 });
   // 컨테이너에서는 역할별 원본이 같은 ConfigMap 디렉터리에 마운트됩니다.
   const configDirectory = path.join(dir, 'config-files');
@@ -394,7 +397,8 @@ if(a[0]==='create'&&a[1]==='clients')fs.writeFileSync(process.env.MOCK_STATE,'ex
   for (const relative of ['oidc/admin-common.sh', 'oidc/setup-oidc.sh', 'claims/sync-oidc-claim-mappers.sh', 'claims/account-user-profile.json']) {
     fs.copyFileSync(path.join(root, 'deploy/keycloak/k8s', relative), path.join(configDirectory, path.basename(relative)));
   }
-  const env = { ...process.env, KCADM_BIN: mock, MOCK_LOG: log, MOCK_STATE: state, MOCK_EXISTING: String(existing), MOCK_FAIL: fail,
+  const env = { ...process.env, KCADM_BIN: mock, MOCK_LOG: log, MOCK_STATE: state, MOCK_REALM_STATE: path.join(dir, 'realm'),
+    MOCK_EXISTING: String(existing), MOCK_FAIL: fail,
     KEYCLOAK_ADMIN_USERNAME: 'admin', KEYCLOAK_ADMIN_PASSWORD: 'private-marker', KCADM_CONFIG: path.join(dir, 'config'),
     KEYCLOAK_CONFIG_DIR: configDirectory, KEYCLOAK_TARGET_REALM: 'etch', KEYCLOAK_IDP_ALIAS: 'oidc',
     KEYCLOAK_PUBLIC_URL: 'https://sso.test', OIDC_PROVIDER: 'keycloak', OIDC_CLIENT_ID: 'portal', OIDC_CLIENT_SECRET: 'private-marker',
@@ -550,7 +554,8 @@ test('account_user 프로필과 양방향 mapper는 로그인 ID와 사람 이�
   const profile = JSON.parse(fs.readFileSync(path.join(root, 'deploy/keycloak/k8s/claims/account-user-profile.json'), 'utf8'));
   const byName = Object.fromEntries(profile.attributes.map(a => [a.name, a]));
   const mapping = { loginid: 'loginid', userid: 'username', sabun: 'sabun', username: 'display_name', username_en: 'username_en', givenname: 'firstName', surname: 'lastName', deptname: 'deptname', deptid: 'deptid', mail: 'email', grdName: 'grdName', grdname_en: 'grdname_en', busname: 'busname', intcode: 'intcode', intname: 'intname', employeetype: 'employeetype', user_sdwt_prod: 'user_sdwt_prod', line_id: 'line_id' };
-  assert.deepEqual(new Set(Object.keys(byName)), new Set(['username', 'firstName', 'lastName', 'job_title', ...Object.values(mapping)]));
+  const manualFields = { job_title: 80, original_deptname: 128 };
+  assert.deepEqual(new Set(Object.keys(byName)), new Set([...Object.keys(manualFields), ...Object.values(mapping)]));
   assert.ok(!byName.career_level);
   // 활성 필드는 본인 조회만 허용하고 신원 정보 수정은 관리자에게 제한합니다.
   for (const attribute of profile.attributes) {
@@ -562,9 +567,12 @@ test('account_user 프로필과 양방향 mapper는 로그인 ID와 사람 이�
   }
   assert.equal(byName.deptname.validations.length.max, 128);
   assert.equal(byName.sabun.validations.length.max, 50);
-  assert.equal(byName.job_title.multivalued, false);
-  assert.equal(byName.job_title.validations.length.max, 80);
-  assert.ok(!Object.values(mapping).includes('job_title'));
+  for (const [name, max] of Object.entries(manualFields)) {
+    assert.equal(byName[name].multivalued, false);
+    assert.equal(byName[name].validations.length.max, max);
+    assert.ok(!byName[name].required);
+    assert.ok(!Object.values(mapping).includes(name));
+  }
   assert.ok(!byName.password && !byName.is_superuser);
   assert.ok(!byName.first_name && !byName.last_name && !byName.avatarid);
   assert.ok(!byName.givenname && !byName.surname);
@@ -675,12 +683,34 @@ for (const existing of [false, true]) {
   });
 }
 
-test('Email as username 또는 realm 조회 실패는 설정 변경 전에 중단한다', t => {
-  for (const scenario of ['true', 'invalid', 'read-failed']) {
+test('realm 정책을 조회할 수 없으면 설정 변경 전에 중단한다', t => {
+  for (const scenario of ['invalid', 'read-failed']) {
     const mock = mockAdmin(t, { fail: scenario === 'read-failed' ? 'realms/etch' : '' });
     const result = mock.run('deploy/keycloak/k8s/claims/sync-oidc-claim-mappers.sh', { KEYCLOAK_MAPPING_TARGET: 'idp', MOCK_EMAIL_AS_USERNAME: scenario });
     assert.notEqual(result.status, 0);
     assert.ok(!mock.calls().some(a => ['create', 'update', 'delete'].includes(a[0])));
+  }
+});
+
+test('Email as username을 끄고 조회로 확인한 뒤에만 IdP mapper를 등록한다', t => {
+  for (const ignored of ['0', '1']) {
+    const mock = mockAdmin(t);
+    const result = mock.run('deploy/keycloak/k8s/claims/sync-oidc-claim-mappers.sh', {
+      KEYCLOAK_MAPPING_TARGET: 'idp', MOCK_EMAIL_AS_USERNAME: 'true', MOCK_REALM_IGNORE_UPDATE: ignored,
+    });
+    const calls = mock.calls();
+    const write = calls.findIndex(args => args[0] === 'update' && args[1] === 'realms/etch');
+    assert.ok(write > 0);
+    assert.deepEqual(calls[write].slice(2, 5), ['-n', '-s', 'registrationEmailAsUsername=false']);
+    assert.deepEqual(calls[write + 1].slice(0, 2), ['get', 'realms/etch']);
+    const mapper = calls.findIndex(args => args[0] === 'create' && args[1].endsWith('/mappers'));
+    if (ignored === '0') {
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(mapper > write + 1);
+    } else {
+      assert.notEqual(result.status, 0);
+      assert.equal(mapper, -1);
+    }
   }
 });
 
@@ -730,19 +760,31 @@ require('node:fs').writeFileSync(process.env.MOCK_CAPTURE, JSON.stringify(proces
 });
 
 for (const existing of [false, true]) {
-  test(`realm 단계는 ${existing ? '기존 realm을 보존' : '없는 realm만 생성'}한다`, t => {
+  test(`realm 단계는 ${existing ? '기존 realm에 선언된 설정을 반영' : '없는 realm을 생성'}한다`, t => {
     const mock = mockAdmin(t, { existing });
     const result = mock.run('deploy/keycloak/k8s/oidc/setup-realm.sh');
     assert.equal(result.status, 0, result.stderr);
     const writes = mock.calls().filter(a => ['create', 'update', 'delete'].includes(a[0]));
-    assert.equal(writes.length, existing ? 0 : 1);
-    if (!existing) assert.equal(writes[0][1], 'realms');
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].slice(0, existing ? 4 : 3),
+      existing ? ['update', 'realms/etch', '-n', '-f'] : ['create', 'realms', '-f']);
+    assert.match(writes[0][existing ? 4 : 3], /etch-realm\.json$/);
   });
 }
 test('realm 조회 실패는 새 realm 생성으로 이어지지 않는다', t => {
   const mock = mockAdmin(t, { fail: 'realms' });
   assert.notEqual(mock.run('deploy/keycloak/k8s/oidc/setup-realm.sh').status, 0);
   assert.ok(!mock.calls().some(a => ['create', 'update', 'delete'].includes(a[0])));
+});
+test('Keycloak 일괄 설정은 사용자 CSV에 필요한 소속 CSV를 Job 실행 전에 검사한다', t => {
+  const envPath = path.join(sandbox(t), 'keycloak.env');
+  fs.writeFileSync(envPath, fixtures.server);
+  const result = spawnSync('make', ['keycloak-setup', 'KUBE_CONTEXT=fixture',
+    `KEYCLOAK_ENV=${envPath}`, 'KEYCLOAK_SDWTS_CSV=', 'KEYCLOAK_USERS_CSV=user.csv'],
+  { cwd: root, encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /--sdwts 또는 KEYCLOAK_SDWTS_CSV를 지정/);
+  assert.doesNotMatch(result.stdout, /setup_discovery\.py|00-create-realm\.sh/);
 });
 test('프로필 전용 단계는 IdP·client·mapper를 변경하지 않는다', t => {
   const mock = mockAdmin(t, { fail: 'identity-provider' });

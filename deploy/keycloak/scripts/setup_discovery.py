@@ -240,7 +240,7 @@ def setup(action, context, env_path, portal_env=None, step="all"):
             print("적용: Portal client Secret", flush=True)
             run(["bash", SHARED / "apply-env.sh", "portal", "prod", "client", portal_env], env=command_env)
             job("portal-keycloak-client", ROOT / "deploy/portal/k8s/jobs/keycloak-client", True)
-    print(f"설정 완료: {step}. 단계별 관리 화면을 확인하고 전체 구성 후 시험 로그인하세요.", flush=True)
+    print(f"설정 완료: {step}.", flush=True)
 
 
 def main():

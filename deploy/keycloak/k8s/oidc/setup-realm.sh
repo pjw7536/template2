@@ -7,13 +7,16 @@ source "$(dirname "${BASH_SOURCE[0]}")/admin-common.sh"
 umask 077
 kc config credentials --server "$KEYCLOAK_ADMIN_URL" --realm master \
   --user "$KEYCLOAK_ADMIN_USERNAME" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null
-# 조회 실패를 realm 부재로 간주하지 않습니다. 기존 realm 설정은 갱신하지 않습니다.
+# 조회 실패를 realm 부재로 간주하지 않습니다.
+definition="$(dirname "${BASH_SOURCE[0]}")/etch-realm.json"
 realms="$(kc get realms --fields realm --format csv --noquotes)"
 while IFS= read -r realm; do
   if [[ "${realm%$'\r'}" == "$KEYCLOAK_TARGET_REALM" ]]; then
-    echo 'etch realm이 이미 있어 기존 설정을 유지합니다.'
+    # 조회 결과를 병합하지 않고 원본에 선언한 realm 속성만 보냅니다.
+    kc update "realms/$KEYCLOAK_TARGET_REALM" -n -f "$definition" >/dev/null
+    echo 'etch realm 설정 반영 완료.'
     exit 0
   fi
 done <<< "$realms"
-kc create realms -f "$(dirname "${BASH_SOURCE[0]}")/etch-realm.json" >/dev/null
+kc create realms -f "$definition" >/dev/null
 echo 'etch realm 생성 완료.'

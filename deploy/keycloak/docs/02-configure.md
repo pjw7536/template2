@@ -13,7 +13,7 @@
 
 ## Realm과 사내 로그인
 
-`make keycloak-setup`(`make ops-deploy APP=keycloak`의 한 단계)이 Realm → 사내 IdP 사전 검사 → 사내 IdP → User Profile → IdP mapper를 순서대로 실행해 사내 로그인을 준비합니다.
+`make keycloak-setup`(`make ops-deploy APP=keycloak`의 한 단계)이 입력 검사 뒤 Realm → 사내 IdP → User Profile → IdP mapper를 순서대로 실행해 사내 로그인을 준비합니다.
 각 단계는 설정 Job을 생성하고 완료될 때까지 최대 15분 기다립니다. Job을 별도로 apply하지 않습니다. 앱 client는 [앱 연결](#앱-연결)에서 만듭니다.
 
 ### 설정 단계와 Job
@@ -27,7 +27,7 @@
 | Portal client | `keycloak-portal-client-setup` | `scripts/04-setup-portal-client.sh` | `portal-keycloak-client` |
 | SDWT | `keycloak-sdwt-init` | `scripts/05-setup-sdwt.sh` | Job 없이 관리자 API 사용 |
 
-위 네 단계는 `keycloak-setup`이 실행하고, Portal client는 Portal 배포가, SDWT는 [SDWT 그룹·사용자](#sdwt-그룹사용자)가 실행합니다.
+위 네 단계는 `keycloak-setup`이 실행합니다. 소속 CSV를 지정하면 마지막에 SDWT도 등록합니다. Portal client는 Portal 배포가 등록합니다.
 
 [변경] 한 단계만 다시 실행할 때는 그 단계의 Make 명령을 씁니다. 같은 명령을 다시 실행하면 기존 Job을 삭제하고 새로 만듭니다. IdP 단계에 다른 env 파일을 쓰면 `KEYCLOAK_ENV="<env 절대 경로>"`를 붙입니다.
 
@@ -49,7 +49,7 @@ kubectl --context "<context>" -n etch-sso describe job <Job 이름>
 
 | 작업 | Job 로그의 완료 문구 | 결과 |
 | --- | --- | --- |
-| Realm | `etch realm 생성 완료.` 또는 `etch realm이 이미 있어 기존 설정을 유지합니다.` | 서버 최초 import가 `etch`를 이미 만들었다면 존재 여부만 확인하고 기존 설정을 유지 |
+| Realm | `etch realm 생성 완료.` 또는 `etch realm 설정 반영 완료.` | [realm JSON](../k8s/server/etch-realm.json)으로 생성하거나 기존 realm에 선언된 속성을 반영 |
 | IdP | `사내 OIDC 설정 완료. 기존 사용자와 realm은 유지됩니다.` | `Identity providers → oidc` 연결 생성·갱신 |
 | User Profile | `User Profile 등록 완료. mapper는 별도 단계에서 실행하세요.` | `Realm settings → User profile`에 `loginid`, `deptname`, `grdName`, `display_name`, `sabun` 등 |
 | IdP mapper | `사내 OIDC claim 16개의 동기화가 완료됐습니다. 대상: idp` | `Identity providers → oidc → Mappers`에 일반 속성 mapper 15개와 `epid-username` 1개 |
@@ -102,36 +102,15 @@ python3 deploy/keycloak/scripts/setup_discovery.py check --step idp --context "<
 
 필드 정의는 [사용자 필드와 claim](#사용자-필드와-claim)에 있습니다. 정의를 바꾸면 `make keycloak-profile-setup` 또는 가이드의 업데이트로 반영합니다.
 
-realm 설정 `Email as username`(`registrationEmailAsUsername`)은 꺼져 있어야 합니다. 이 배포의 realm 원본(`k8s/server/etch-realm.json`)은 이 설정을 켜지 않으므로 새로 만든 realm에서는 꺼져 있습니다.
-IdP mapper Job(`keycloak-idp-mappers-setup`)이 mapper를 바꾸기 전에 `kcadm`으로 이 값을 확인하고, 켜져 있으면 `EPID username을 사용하려면 realm의 Email as username 설정을 먼저 꺼야 합니다.`로 끝납니다. 이 설정을 끄는 Make 타깃은 없으므로 [Keycloak 관리 API](../../shared/docs/infrastructure/access.md#keycloak-관리-api) 절의 방법으로 아래 명령을 씁니다. 다른 env 파일을 쓰면 `--env`에 그 경로를 넣습니다.
+IdP mapper Job은 EPID를 username으로 사용하기 위해 realm의 `Email as username`(`registrationEmailAsUsername`)을 자동으로 확인합니다. 켜져 있으면 해당 키만 끄고 다시 읽어 `false`일 때 mapper를 등록합니다. 이 단계의 성공 문구는 `realm의 Email as username 설정 반영 완료.`입니다. 확인이 실패하면 Job은 mapper 변경 전에 멈춥니다.
 
-[조회] 현재 값을 확인합니다.
-
-```bash
-python3 deploy/keycloak/scripts/admin_env.py --env deploy/keycloak/env/prod.env -- python3 -c '
-import sys
-sys.path.insert(0, "deploy/keycloak/scripts")
-from init_sdwt import Admin
-print("registrationEmailAsUsername:", Admin("etch").call("GET")["registrationEmailAsUsername"])
-'
-```
-
-성공: `registrationEmailAsUsername: False`. `True`면 아래 명령으로 끕니다.
-
-[변경] `etch` realm의 `Email as username`을 끕니다. 다른 realm 설정은 바꾸지 않습니다.
+[변경] 기존 realm에 이 설정과 수신 mapper만 반영할 때 실행합니다.
 
 ```bash
-python3 deploy/keycloak/scripts/admin_env.py --env deploy/keycloak/env/prod.env -- python3 -c '
-import sys
-sys.path.insert(0, "deploy/keycloak/scripts")
-from init_sdwt import Admin
-api = Admin("etch")
-api.call("PUT", "", {"registrationEmailAsUsername": False})
-print("registrationEmailAsUsername:", api.call("GET")["registrationEmailAsUsername"])
-'
+make keycloak-idp-mappers-setup KUBE_CONTEXT="<context>"
 ```
 
-성공: `registrationEmailAsUsername: False`. 이어서 `make keycloak-idp-mappers-setup KUBE_CONTEXT="<context>"`를 다시 실행해 `설정 완료: mappers`를 확인합니다.
+`설정 완료: mappers`가 성공 기준입니다.
 
 mapper 생성만으로 사용자 값이 채워지지 않으며 사내 로그인을 거쳐야 수신합니다.
 
@@ -160,7 +139,7 @@ CSV로 사전 등록한 계정은 첫 사내 로그인에서 계정 연결 확�
 
 ## SDWT 그룹·사용자
 
-소속 그룹 트리(팀 → 라인 → SDWT)와 선택적으로 사용자를 사전 등록합니다. 앱 client는 필요하지 않습니다. 실행 순서는 [가이드의 선택 절](../README.md#선택-sdwt-소속역할-관리-api)과 같습니다.
+소속 그룹 트리(팀 → 라인 → SDWT)와 선택적으로 사용자를 사전 등록합니다. 앱 client는 필요하지 않습니다. CSV 경로와 함께 [배포](../README.md#a-최초-설치)하거나 [별도 명령](../README.md#선택-sdwt-소속역할-관리-api)으로 적용합니다.
 
 ```text
 /org
@@ -349,7 +328,7 @@ make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="<SDWT CSV 절대 경로>" KEYCLOAK_U
 ### 권한관리 웹
 
 라인·SDWT 추가, 사용자 소속 변경, 앱 역할 부여는 [권한관리 웹](../../../apps/iam/README.md)에서 할 수 있습니다.
-Keycloak 준비는 [권한관리(IAM) 가이드](../../iam/README.md#a-최초-설치)를 따르고, 앱 역할은 아래 [앱 역할](#앱-역할)로 반영합니다.
+IAM의 Keycloak 설정과 앱 역할 카탈로그는 [권한관리(IAM) 배포](../../iam/README.md#a-최초-설치)가 적용합니다.
 
 ### 앱별 완료 기준
 
@@ -442,6 +421,8 @@ Keycloak 기본 `username`은 EPID(`userid`)이고, 사내 사람 이름 `userna
 비밀번호·권한·로그인 시각은 커스텀 프로필에 복제하지 않습니다.
 
 `job_title`은 IAM에서 관리자가 입력하는 직책(예: `PL`, `파트장`)입니다. PL은 현재 소속 라인의 대표, 파트장은 현재 소속 SDWT의 대표를 뜻합니다. 직급 `grdName`과 구분하는 단일 문자열 속성이며 최대 80자입니다. 빈 값이면 직책을 해제합니다. 사내 IdP 수신 mapper와 앱 발급 mapper에는 포함하지 않으며 권한 역할을 부여하지 않습니다. 정의 변경은 [User Profile 단계](#user-profile과-수신-mapper)로 반영합니다. 미정의 속성 정책 `ADMIN_EDIT`을 사용하는 기존 realm에서도 관리자 저장은 가능하지만 명시한 프로필 제한을 적용하려면 정의를 반영해야 합니다.
+
+`original_deptname`은 파견자의 원소속 부서를 기록하는 선택 속성입니다. 관리자가 최대 128자의 부서명을 입력합니다. 사내 SSO가 수신한 현재 부서는 `deptname`에 저장합니다. 원소속 부서는 IAM과 Keycloak 사용자 프로필에서 조회하며 역할 판단용 claim과 앱 토큰에 발급하지 않습니다. [IAM 사용자 편집](../../../apps/iam/README.md#구성원-소속-이동)
 
 ### IdP mapper
 

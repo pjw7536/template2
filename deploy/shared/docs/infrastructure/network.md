@@ -34,6 +34,7 @@
 | 운영 SSO DNS 전환 목표 | `sso.etch.samsungds.net` → APP VIP `10.172.26.150` → 공용 Traefik → Keycloak Service | 사용자 확정: 새 인증 주소와 공용 VIP 사용. DNS 등록·변경은 사용자가 직접 수행. 저장소 Ingress·공개 URL은 새 주소를 선언하며 실제 DNS 변경·HTTPS 전달 경로·TLS·서버 적용은 미확인 |
 | 사내 이미지 저장소 DNS | `store.etch.samsungds.net` → APP VIP `10.172.26.150:443` → 공용 Traefik → Zot | 사용자 확정: `store`로 HTTPS 배포. DNS 등록·실제 인증서·서버 적용 확인 필요 |
 | 사내 이미지 저장소 주소 전환 목표 | `registry.etch.samsungds.net` → 동일 APP VIP·Zot | 새 주소를 DNS SAN에 포함한 인증서 발급 후 [주소 전환](../../../registry/docs/01-operations.md#registry-주소로-전환) |
+| IAM 웹 공개 DNS | [IAM 공개 주소](services.md#서비스-접속-주소) → APP VIP → 공용 Traefik 경로 예정 | 사용자 확정 주소. DNS 연결 및 Ingress 등록·host 충돌 여부 확인 필요 |
 | 테스트 SSO 주소 계획 | `sso.stg.etch.samsungds.net` | 사용자 확정: 명명·DNS·인증서 계획만 반영. 별도 테스트 Keycloak·DB·realm·issuer는 구성하지 않음. DNS 등록·연결 대상·서버 적용은 미확인 |
 
 ### DNS 명명과 향후 구역 위임
@@ -64,6 +65,7 @@
 | --- | --- | --- |
 | 현재 신청 범위 | CN `etch.samsungds.net`, SAN `etch.samsungds.net`, `10.172.26.150`. `stg.etch.samsungds.net`은 포함되지 않음 | 사용자 확인: 신청 범위. 실제 발급 여부·SAN의 DNS/IP 유형·유효기간·서버 적용은 미확인 |
 | 추가 신청안 | 아래 목록: DNS SAN 92개·IP SAN 1개, 총 93개 | 신청안. 실제 제출·발급·DNS 등록·서버 적용은 미확인 |
+| IAM 웹 | [IAM 공개 주소](services.md#서비스-접속-주소)에 기존 인증서 사용 | 사용자 확인. 사내 서버에서 해당 주소의 SAN·유효기간·Traefik 적용 확인 필요 |
 
 ### 앱별 도메인 전환을 위한 인증서 추가 신청안
 

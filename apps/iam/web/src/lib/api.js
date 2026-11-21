@@ -1,6 +1,6 @@
 import { admin } from "./keycloak.js"
 import { readCatalog } from "./access.js"
-import { attr, JOB_TITLE_MAX_LENGTH } from "./users.js"
+import { attr, JOB_TITLE_MAX_LENGTH, ORIGINAL_DEPARTMENT_MAX_LENGTH } from "./users.js"
 import { LEVEL_NAMES, LEVELS, ORG_ROOT, orgRoleName, planAffiliation, sdwtPaths, sdwtRolePlan, withAffiliation } from "./plan.js"
 
 const ALL_ROLE = "org-all"
@@ -208,6 +208,27 @@ export async function saveJobTitle(userId, title, previousTitle = "") {
   const saved = await admin(`/users/${userId}`)
   if (attr(saved, "job_title").trim() !== next) {
     throw new Error("직책이 저장되지 않았습니다. Keycloak User Profile의 job_title 설정을 확인하세요.")
+  }
+  return saved
+}
+
+/** 원소속 부서만 변경하고 Keycloak에 저장된 값을 확인합니다. */
+export async function saveOriginalDepartment(userId, department, previousDepartment = "") {
+  const next = department.trim()
+  if (next.length > ORIGINAL_DEPARTMENT_MAX_LENGTH) {
+    throw new Error(`원소속 부서는 ${ORIGINAL_DEPARTMENT_MAX_LENGTH}자 이내로 입력하세요.`)
+  }
+  await saveAttributes(userId, (attributes) => {
+    if (attr({ attributes }, "original_deptname").trim() !== previousDepartment.trim()) {
+      throw new Error("다른 관리자가 원소속 부서를 변경했습니다. 사용자 패널을 다시 열어 확인하세요.")
+    }
+    if (next) attributes.original_deptname = [next]
+    else delete attributes.original_deptname
+    return attributes
+  })
+  const saved = await admin(`/users/${userId}`)
+  if (attr(saved, "original_deptname") !== next) {
+    throw new Error("원소속 부서가 저장되지 않았습니다. Keycloak User Profile의 original_deptname 설정을 확인하세요.")
   }
   return saved
 }

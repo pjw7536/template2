@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("./keycloak.js", () => ({ admin: vi.fn() }))
 
-import { moveMemberAffiliation, saveJobTitle } from "./api.js"
+import { moveMemberAffiliation, saveJobTitle, saveOriginalDepartment } from "./api.js"
 import { admin } from "./keycloak.js"
 import { buildOrg } from "./plan.js"
 
@@ -24,7 +24,7 @@ beforeEach(() => {
   })
 })
 
-describe("직책 저장", () => {
+describe("수동 프로필 속성 저장", () => {
   let current
   beforeEach(() => {
     current = structuredClone(user)
@@ -72,6 +72,22 @@ describe("직책 저장", () => {
       return structuredClone(user)
     })
     await expect(saveJobTitle("u1", "PL", "")).rejects.toThrow("HTTP 403")
+  })
+
+  it("SSO 부서와 현재 소속을 유지하며 원소속 부서를 저장하고 비울 수 있다", async () => {
+    current.attributes.deptname = ["파견팀"]
+    const attributes = { ...current.attributes }
+    const saved = await saveOriginalDepartment("u1", " 기존팀 ", "")
+    expect(saved.attributes).toEqual({ ...attributes, original_deptname: ["기존팀"] })
+    const cleared = await saveOriginalDepartment("u1", "", "기존팀")
+    expect(cleared.attributes).toEqual(attributes)
+    expect(writes().map(([path]) => path)).toEqual(["/users/u1", "/users/u1"])
+  })
+
+  it("다른 관리자가 원소속 부서를 먼저 바꿨으면 저장하지 않는다", async () => {
+    current.attributes.original_deptname = ["수정된팀"]
+    await expect(saveOriginalDepartment("u1", "기존팀", "")).rejects.toThrow("다른 관리자가 원소속 부서를 변경")
+    expect(writes()).toEqual([])
   })
 })
 

@@ -273,15 +273,21 @@ if [[ "$KEYCLOAK_MAPPING_TARGET" != idp ]] && ! client_uuid="$(find_client_uuid)
   exit 1
 fi
 
-# 이메일을 username으로 쓰는 realm에서는 LOCAL mapper가 무시되므로 변경 전에 중단합니다.
+# EPID LOCAL mapper가 동작하도록 realm의 username 정책을 먼저 맞춥니다.
 if [[ "$KEYCLOAK_MAPPING_TARGET" != client ]]; then
   email_as_username="$(kcadm get "realms/$KEYCLOAK_TARGET_REALM" \
     --fields registrationEmailAsUsername --format csv --noquotes)"
   case "${email_as_username%$'\r'}" in
     false) ;;
     true)
-      echo 'EPID username을 사용하려면 realm의 Email as username 설정을 먼저 꺼야 합니다.' >&2
-      exit 1 ;;
+      kcadm update "realms/$KEYCLOAK_TARGET_REALM" -n -s registrationEmailAsUsername=false >/dev/null
+      email_as_username="$(kcadm get "realms/$KEYCLOAK_TARGET_REALM" \
+        --fields registrationEmailAsUsername --format csv --noquotes)"
+      if [[ "${email_as_username%$'\r'}" != false ]]; then
+        echo 'realm의 Email as username 설정 변경을 확인할 수 없습니다.' >&2
+        exit 1
+      fi
+      echo 'realm의 Email as username 설정 반영 완료.' ;;
     *)
       echo 'realm의 Email as username 설정을 확인할 수 없습니다.' >&2
       exit 1 ;;

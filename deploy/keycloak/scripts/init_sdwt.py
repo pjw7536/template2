@@ -161,11 +161,18 @@ class Admin:
 
     def call(self, method: str, path: str = "", data=None, query=None):
         """짧은 관리자 토큰을 갱신하며 대상 realm 안에서만 요청합니다."""
-        if time.monotonic() >= self.expires - 15:
-            self.login()
         url = f"/admin/realms/{segment(self.realm)}" + (f"/{path}" if path else "")
         if query:
             url += "?" + urlencode(query)
+        return self._admin_request(method, url, data)
+
+    def server_info(self) -> dict:
+        """설정 전에 서버에서 지원 중인 기능을 조회합니다."""
+        return self._admin_request("GET", "/admin/serverinfo")
+
+    def _admin_request(self, method: str, url: str, data=None):
+        if time.monotonic() >= self.expires - 15:
+            self.login()
         return self._send(method, url, data)
 
     def pages(self, path: str, **query) -> list:

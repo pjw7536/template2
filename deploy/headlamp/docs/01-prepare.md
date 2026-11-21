@@ -61,6 +61,7 @@ Headlamp는 Keycloak env를 자동으로 읽지 않으므로 Keycloak 주소가 
 | `HEADLAMP_OIDC_CLIENT_ID` | `headlamp` | Keycloak 전용 client ID. API server audience도 같은 값 |
 | `HEADLAMP_OIDC_SECRET` | `headlamp-oidc` | client secret을 담을 Kubernetes Secret의 **이름**. 비밀값이 아니며 `OIDC_CLIENT_SECRET` 키 하나만 등록 |
 | `HEADLAMP_OIDC_CA_CONFIGMAP` | `headlamp-oidc-ca` | Pod가 Keycloak HTTPS를 신뢰할 CA ConfigMap 이름(`ca.crt` 키). 공인 CA이면 빈 값 |
+| `HEADLAMP_ADMINS` | 빈 값 | `/headlamp-admins`에 가입시킬 기존 Keycloak username(쉼표 구분). 승인한 사용자 목록은 저장소 밖 운영 env에 두며 Make 변수 또는 프로세스 환경으로 재정의 가능 |
 
 CA ConfigMap은 Pod가 읽는 보관함이고, `HEADLAMP_OIDC_CA_FILE`은 관리 호스트의 연결 검사·ConfigMap 등록·API server 전달에 쓰는 PEM 파일입니다.
 `HEADLAMP_SSO_HOST`·`HEADLAMP_CALLBACK_URL`은 `headlamp-setup-env`가 계산하는 값이며 env에 추가하지 않습니다.
@@ -71,7 +72,6 @@ CA ConfigMap은 Pod가 읽는 보관함이고, `HEADLAMP_OIDC_CA_FILE`은 관리
 | --- | --- |
 | `HEADLAMP_ENV` | 다른 일반 설정 파일 경로 |
 | `KUBE_CONTEXT` | `headlamp-oidc-setup`, `headlamp-up`, `headlamp-ui`의 대상. 필수 |
-| `HEADLAMP_ADMINS` | `headlamp-oidc-setup`이 `headlamp-admins`에 가입시킬 Keycloak username(쉼표 구분). 요청에 주어지는 선택 입력이며 비우면 그룹만 만듦 |
 | `KEYCLOAK_ENV` | `headlamp-oidc-setup`이 Keycloak 관리자 계정을 읽는 env. 기본 `deploy/keycloak/env/prod.env` |
 | `HEADLAMP_CHART_FILE` | 반입한 고정 chart 경로. 같은 SHA-256 검사 |
 | `HEADLAMP_OIDC_CA_FILE` | `headlamp-oidc-check`·`headlamp-oidc-setup`이 실행 서버에서 읽을 PEM CA 파일 |

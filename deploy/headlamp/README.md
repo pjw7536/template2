@@ -22,7 +22,7 @@ Keycloak 로그인으로 Kubernetes를 관리하는 화면(Headlamp)을 설치·
 - 권한: 토큰의 그룹 `/headlamp-admins`는 API server에서 `headlamp:/headlamp-admins`가 되고 ClusterRoleBinding `server-headlamp-admin`으로 `cluster-admin` 권한을 받습니다. 그룹 밖 사용자는 로그인해도 자원에 접근할 수 없고, Headlamp Pod의 ServiceAccount에는 조회·관리 권한을 주지 않습니다.
 - 접속: 공용 Traefik(`etch-sso/traefik`)의 HTTPS entrypoint로 들어오며 경로는 `/`입니다. `headlamp` namespace 감시는 `headlamp-up`이 추가합니다.
 - 배포: 저장소에 고정한 Helm chart `0.45.0`과 `helm/values.yaml`, env로 설치합니다. replica는 1입니다.
-- Keycloak 등록: client 등록, `headlamp-admins` 그룹 생성, client secret Secret과 CA ConfigMap 등록은 `headlamp-oidc-setup`이 Keycloak 관리 API로 합니다. 이미 있는 client의 설정은 바꾸지 않습니다.
+- Keycloak 등록: `headlamp-oidc-setup`이 client의 로그인·토큰 설정, `/headlamp-admins` 그룹과 지정 관리자, Kubernetes Secret과 CA ConfigMap을 준비합니다. 기존 client의 관리 대상 설정도 같은 정의로 갱신합니다.
 
 실제 주소·배치는 [서비스 접속 주소](../shared/docs/infrastructure/services.md#서비스-접속-주소)와 [앱별 배치와 스토리지 선언](../shared/docs/infrastructure/services.md#앱별-배치와-스토리지-선언)에서 관리합니다.
 
@@ -40,14 +40,14 @@ Keycloak 로그인으로 Kubernetes를 관리하는 화면(Headlamp)을 설치·
 | DNS `headlamp.etch.samsungds.net` → APP VIP 등록([DNS](../shared/docs/infrastructure/access.md#dns)). 없어도 배포는 진행합니다 | `getent hosts headlamp.etch.samsungds.net` |
 | 모든 제어면의 API server OIDC 설정. API server가 다시 시작되므로 [승인]입니다([A. 최초 설치](#a-최초-설치) 2단계) | `kubectl --context "<context>" -n kube-system get pods -l component=kube-apiserver -o jsonpath='{range .items[*]}{.spec.nodeName}{" "}{.spec.containers[0].command}{"\n"}{end}'`가 제어면마다 한 줄을 출력하고 모든 줄에 `--oidc-issuer-url=`(`--authentication-config` 방식의 클러스터는 `--authentication-config=`)이 있음 |
 
-`HEADLAMP_ADMINS`(관리자로 가입시킬 Keycloak username)는 요청에 주어지는 선택 입력입니다. 요청에 없으면 붙이지 않고 배포합니다. 이때 `headlamp-admins` 그룹은 구성원 없이 만들어지고, 관리자는 나중에 [B. 업데이트](#b-업데이트)의 `관리자 추가`로 가입시킵니다.
+승인된 관리자 목록은 저장소 밖 Headlamp 운영 env에 `HEADLAMP_ADMINS`로 넣습니다. 지정한 계정은 배포 시점에 대상 Keycloak realm에 있어야 합니다. 사전 등록 계정의 사내 로그인 연결 확인은 [관리자 가입](docs/02-authentication.md#3-사용할-사람을-그룹에-넣기)을 따릅니다.
 
 ## 입력
 
 | 이름 | 의미 | 기본값 |
 | --- | --- | --- |
 | `HEADLAMP_ENV` | Headlamp env 경로 | `deploy/headlamp/env/k8s.env`. 저장소 밖 env를 쓰면 모든 명령에 같은 값을 붙임([운영 입력 파일](../shared/docs/infrastructure/access.md#운영-입력-파일)) |
-| `HEADLAMP_ADMINS` | `headlamp-admins`에 가입시킬 Keycloak username(쉼표 구분). 요청에 주어지는 선택 입력 | 비움. 비우면 그룹만 만들고 구성원은 넣지 않음 |
+| `HEADLAMP_ADMINS` | `HEADLAMP_ENV`의 관리자 가입 목록(쉼표로 구분한 Keycloak username). Make 변수나 프로세스 환경으로 재정의 가능 | 비움. 그룹은 준비하고 가입자를 추가하지 않음 |
 | `HEADLAMP_OIDC_CA_FILE` | Keycloak CA 묶음 | `deploy/shared/certs/sso.etch.samsungds.net/keycloak-ca-bundle.pem` |
 | `KEYCLOAK_ENV` | client 등록에 쓰는 Keycloak 관리자 계정의 출처 | `deploy/keycloak/env/prod.env` |
 
@@ -55,7 +55,7 @@ env 파일 키의 의미·형식과 그 밖의 실행 입력은 [환경설정](d
 
 ## A. 최초 설치
 
-1. [변경] 배포. 준비 검사(chart 받기·CA 묶음·공용 TLS 등록 포함) → env·chart 검사 → Keycloak client·관리자 그룹과 namespace·client secret·CA ConfigMap 등록 → Helm 설치 → smoke → 대조를 순서대로 수행합니다. 요청에 관리자 username이 있으면 같은 명령 뒤에 `HEADLAMP_ADMINS=<username1,username2>`를 붙입니다.
+1. [변경] 배포. 준비 검사(chart 받기·CA 묶음·공용 TLS 등록 포함) → env·chart 검사 → Keycloak client·관리자 그룹·지정 관리자와 namespace·client secret·CA ConfigMap 등록 → Helm 설치 → smoke → 대조를 순서대로 수행합니다. 별도 운영 env를 쓰면 같은 명령에 `HEADLAMP_ENV="<Headlamp env 경로>"`를 붙입니다.
    ```bash
    make ops-deploy APP=headlamp KUBE_CONTEXT="<context>"
    ```
@@ -74,7 +74,7 @@ env 파일 키의 의미·형식과 그 밖의 실행 입력은 [환경설정](d
 | 변경 | 실행 |
 | --- | --- |
 | env·chart·이미지 | [변경] `make ops-deploy APP=headlamp KUBE_CONTEXT="<context>"`. 성공 기준은 A-1과 같음 |
-| 관리자 추가 | [변경] `make headlamp-oidc-setup KUBE_CONTEXT="<context>" HEADLAMP_ADMINS=<username>`. 성공: `관리자 그룹 가입: <username>`과 `Headlamp OIDC 준비 완료` |
+| 관리자 추가 | [변경] 운영 env의 `HEADLAMP_ADMINS`에 추가하고 `make headlamp-oidc-setup KUBE_CONTEXT="<context>" HEADLAMP_ENV="<Headlamp env 경로>"` 실행. 성공: `관리자 그룹 가입: <username>`과 `Headlamp OIDC 준비 완료` |
 | 관리자 제거 | [변경] [그룹에서 빼기](docs/02-authentication.md#3-사용할-사람을-그룹에-넣기) |
 | client secret·CA 갱신 | [변경] `make headlamp-oidc-setup KUBE_CONTEXT="<context>"`(성공: `Headlamp OIDC 준비 완료`) 뒤 아래 재시작 블록 |
 | 사이트 인증서 갱신 | [변경] [공용 TLS 등록](../README.md#공용-tls-등록)의 명령을 `TLS_HOST=headlamp.etch.samsungds.net`으로 실행 |
@@ -121,7 +121,7 @@ Pod·이벤트·로그는 [장애 조회](../README.md#장애-조회)의 명령�
 | `알 수 없거나 중복된 env 항목입니다` 등 `headlamp-check`의 env 오류 | env 키와 형식을 [환경설정](docs/01-prepare.md#환경설정)과 대조. 다른 값이 필요하면 [운영 입력 파일](../shared/docs/infrastructure/access.md#운영-입력-파일)의 사본을 `HEADLAMP_ENV=<경로>`로 지정 |
 | `Keycloak 연결 실패. 주소·DNS·CA 묶음을 확인하세요.` | 관리 호스트에서 Keycloak 공개 주소에 닿지 않음. `make keycloak-smoke KUBE_CONTEXT="<context>"`로 Keycloak을 확인하고 C-2의 연결 검사를 실행 |
 | `Keycloak POST 요청 실패 (HTTP 401)`, `관리자 토큰을 발급받지 못했습니다.` | Keycloak 관리자 계정이 `KEYCLOAK_ENV`의 값과 다름. [Keycloak 관리 API](../shared/docs/infrastructure/access.md#keycloak-관리-api) 절로 계정 위치를 확인 |
-| `관리자로 지정한 Keycloak 사용자를 찾을 수 없습니다: <username>` | 그 username이 Keycloak에 없음(첫 사내 로그인 전). `HEADLAMP_ADMINS`에서 그 이름을 빼고 같은 명령을 다시 실행하고, 찾지 못한 username을 보고에 남김 |
+| `관리자로 지정한 Keycloak 사용자를 찾을 수 없습니다: <username>` | 대상 realm과 확정된 username을 확인합니다. 관리자가 첫 사내 로그인을 마쳐 계정이 확인되면 같은 배포를 다시 실행합니다. |
 | `OIDC CA 묶음이 없습니다` | `deploy/shared/certs/ca/`에 CA 파일이 없음. [인증서 발급](../shared/docs/infrastructure/access.md#인증서-발급) 절로 준비 |
 | `headlamp-up`의 `OIDC Secret에는 비어 있지 않은 OIDC_CLIENT_SECRET 키만 등록하세요.`, `OIDC CA ConfigMap에 비어 있지 않은 ca.crt가 필요합니다.`, Secret·ConfigMap `NotFound` | [변경] `make headlamp-oidc-setup KUBE_CONTEXT="<context>"`로 Secret·ConfigMap을 다시 등록. Secret에는 `OIDC_CLIENT_SECRET` 키 하나, ConfigMap에는 `ca.crt`가 있어야 함 |
 | `공용 TLS 인증서가 없습니다` | [변경] [공용 TLS 등록](../README.md#공용-tls-등록)의 명령을 `TLS_HOST=headlamp.etch.samsungds.net`으로 실행 |

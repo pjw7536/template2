@@ -48,6 +48,7 @@
 | Airflow DAG 공유 폴더 전환 | `khinfow01`의 공유 디렉터리를 스케줄러와 DAG Processor에 마운트 | 저장소 선언. 기존 DAG 백업·파일 이관·운영 재배포 및 목록 확인 필요 | [공유 폴더 전환](../../../airflow/docs/04-operations.md#공유-폴더-전환) | 운영자 |
 | Monitoring 배포 | Grafana·Prometheus·Alertmanager 접속과 지표 수집 | 저장 폴더 준비는 사용자 확인. 배포·접속 미확인 | [Monitoring 설치](../../../monitoring/README.md) | 운영자 |
 | Headlamp 배포 | `https://headlamp.etch.samsungds.net` 로그인 | 배치 노드·배포 미확인 | [Headlamp 설치](../../../headlamp/README.md) | 운영자 |
+| IAM 웹 공개 | [IAM 공개 주소](services.md#서비스-접속-주소)에서 웹과 업무 부하 API 제공 | 사용자 확정 주소. 웹·API 이미지와 Kubernetes 정의, DNS·TLS·Ingress 적용 확인 필요 | [IAM 배포](../../../iam/README.md#c-배포-후-확인) | 미확인 |
 | FTP 배포 | 대상 노드에 `etch.io/ftp-enabled=true` 라벨과 송수신 성공 | 대상 노드·배포 미확인 | [FTP 설치](../../../ftp/docs/01-install.md) | 운영자 |
 | Portal Kubernetes 전환 | 테스트·운영 Portal을 Docker 서버에서 이 클러스터로 이전 | 이미지 빌드·push, 운영 Worker, 외부 DB, 업무 파일 PVC, 로그인 client 적용 미확인 | [Portal 접속 구분](services.md#portal-테스트운영-접속-구분), [서버가 받는 이미지](repositories.md#서버가-받는-이미지), [Portal 설치](../../../portal/README.md) | 미확인 |
 
@@ -60,5 +61,6 @@
 | 서버 checkout·Git | 사내 Git 주소·배포 브랜치·서버 checkout 경로 확정 | 미확인 | [사내 저장소 주소](repositories.md#공통-주소와-경로-규칙), [운영 파일 위치](operations.md#운영-파일과-데이터-위치) | 미확인 |
 | 접속·담당자 | 노드 명령 실행·관리망 경유지·서비스 담당자 | 미확인 | [추가 확인](servers.md#추가-확인접속-정보) | 미확인 |
 | 접근 경로 기록 | DNS·방화벽·LB·인증서 발급·노드 명령 실행·외부 DB의 접근 방법과 계정 위치를 처음 사용할 때 기록 | 모든 절 미확인 | [접근 경로](access.md) | 운영자 |
-| 권한관리(IAM) Keycloak 설정 | `IAM_PUBLIC_URL` 확정 뒤 `make ops-deploy APP=iam`. 권한관리 웹의 Kubernetes 배포 정의는 없음(전환 미완료) | 미확인 | [IAM 가이드](../../../iam/README.md) | 미확인 |
+| 권한관리(IAM) Keycloak 설정 | 운영 공개 주소로 IAM client를 구성하고 조직 역할·권한·카탈로그를 적용. `iam-verify`로 확인 | 주소 확정. Keycloak 적용은 미확인 | [IAM 가이드](../../../iam/README.md) | 미확인 |
+| 원소속 부서 프로필 | 운영 Keycloak에 `original_deptname`을 등록하고 IAM 사용자 패널에서 확인 | 저장소 선언. 운영 적용 미확인 | [Keycloak과 IAM 설정 확인](../operations/05-transition.md#6-keycloak과-iam-설정-확인) | 미확인 |
 | 서버 상태 보고서 전달 | 운영 agent가 `make ops-report`로 만든 별칭 보고서를 외부 개발 환경에 전달하고, 그 결과로 이 문서의 `미확인` 행을 정리 | 미확인. 보고서 생성 도구는 서버에서 실행된 적 없음 | [서버 상태 보고](../operations/04-drift.md#서버-상태-보고), [별칭 표](aliases.json) | 사용자 |

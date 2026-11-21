@@ -37,7 +37,7 @@ def run(command, **kwargs):
     return subprocess.run(command, check=True, text=True, **kwargs)
 
 
-def settings(path, example=False):
+def read_env(path):
     """env를 실행하지 않고 제한된 설정만 읽는다."""
     result = {}
     for line in Path(path).read_text().splitlines():
@@ -47,9 +47,15 @@ def settings(path, example=False):
         key, separator, value = line.partition('=')
         if not separator or key not in {'HEADLAMP_REGISTRY', 'IMAGE_PULL_SECRET', 'HEADLAMP_HOST',
                                         'HEADLAMP_OIDC_ISSUER_URL', 'HEADLAMP_OIDC_CLIENT_ID',
-                                        'HEADLAMP_OIDC_SECRET', 'HEADLAMP_OIDC_CA_CONFIGMAP'} or key in result:
+                                        'HEADLAMP_OIDC_SECRET', 'HEADLAMP_OIDC_CA_CONFIGMAP',
+                                        'HEADLAMP_ADMINS'} or key in result:
             raise ValueError('알 수 없거나 중복된 env 항목입니다.')
         result[key] = value
+    return result
+
+
+def settings(result, example=False):
+    """배포 입력에서 Helm values에 필요한 값만 검증하고 변환한다."""
     registry = result.get('HEADLAMP_REGISTRY', '')
     if not re.fullmatch(r'[a-z0-9][a-z0-9.:-]*(/[a-z0-9._-]+)*', registry):
         raise ValueError('HEADLAMP_REGISTRY에 scheme 없는 registry 경로가 필요합니다.')
@@ -213,32 +219,81 @@ def check_oidc_resources(context, values):
             raise ValueError('OIDC CA ConfigMap에 비어 있지 않은 ca.crt가 필요합니다.')
 
 
-def register_client(admin, values, admins=()):
-    """realm에 client와 관리자 그룹이 없으면 만들고 client secret을 반환한다. 기존 client 설정은 바꾸지 않는다."""
-    definition = oidc_client(values)
-    found = admin.call('GET', 'clients', query={'clientId': definition['clientId']})
-    if not found:
+def configure_client(admin, definition):
+    """Headlamp client의 로그인 설정과 그룹 mapper를 반영하고 client ID를 반환한다."""
+    client_id = definition['clientId']
+    query = {'clientId': client_id, 'search': 'false'}
+    client = next((item for item in admin.call('GET', 'clients', query=query) if item['clientId'] == client_id), None)
+    if client is None:
         admin.call('POST', 'clients', definition)
-        found = admin.call('GET', 'clients', query={'clientId': definition['clientId']})
-        print(f"Keycloak client 등록: {definition['clientId']}")
+        client = next((item for item in admin.call('GET', 'clients', query=query) if item['clientId'] == client_id), None)
+        if client is None:
+            raise ValueError(f'Keycloak에 등록한 client를 찾을 수 없습니다: {client_id}')
+        print(f'Keycloak client 등록: {client_id}')
+        return client['id']
+
+    path = f"clients/{client['id']}"
+    current = admin.call('GET', path)
+    if current.get('protocol') != definition['protocol']:
+        raise ValueError(f'Keycloak client의 프로토콜이 OIDC가 아닙니다: {client_id}')
+    desired = {key: value for key, value in definition.items() if key not in {'defaultClientScopes', 'protocolMappers'}}
+    desired['attributes'] = {**(current.get('attributes') or {}), **desired['attributes']}
+    if any(current.get(key) != value for key, value in desired.items()):
+        admin.call('PUT', path, desired)
+        print(f'Keycloak client 설정 반영: {client_id}')
+
+    scopes_path = f'{path}/default-client-scopes'
+    attached = {scope['name'] for scope in admin.call('GET', scopes_path)}
+    missing = set(definition['defaultClientScopes']) - attached
+    if missing:
+        scopes = {scope['name']: scope['id'] for scope in admin.call('GET', 'client-scopes')}
+        if missing - scopes.keys():
+            raise ValueError('Keycloak에 Headlamp의 profile·email 기본 scope가 필요합니다.')
+        for name in sorted(missing):
+            admin.call('PUT', f'{scopes_path}/{scopes[name]}')
+
+    mapper, = definition['protocolMappers']
+    mappers_path = f'{path}/protocol-mappers/models'
+    current_mapper = next((item for item in admin.call('GET', mappers_path)
+                           if item['name'] == mapper['name'] and item['protocol'] == mapper['protocol']), None)
+    if current_mapper is None:
+        admin.call('POST', mappers_path, mapper)
     else:
-        print(f"Keycloak client가 이미 있어 설정을 바꾸지 않았습니다: {definition['clientId']}")
-    lookup = lambda: [group for group in admin.call('GET', 'groups', query={'search': ADMIN_GROUP, 'exact': 'true'}) or []
-                      if group.get('name') == ADMIN_GROUP]
-    groups = lookup()
-    if not groups:
-        admin.call('POST', 'groups', {'name': ADMIN_GROUP})
-        groups = lookup()
-        print(f'Keycloak 그룹 생성: /{ADMIN_GROUP}')
-    for username in admins:
-        users = admin.call('GET', 'users', query={'username': username, 'exact': 'true'}) or []
-        if len(users) != 1:
+        config = {**(current_mapper.get('config') or {}), **mapper['config']}
+        desired_mapper = {**mapper, 'id': current_mapper['id'], 'config': config}
+        if any(current_mapper.get(key) != value for key, value in desired_mapper.items()):
+            admin.call('PUT', f"{mappers_path}/{current_mapper['id']}", desired_mapper)
+    return client['id']
+
+
+def register_client(admin, values, admins=()):
+    """관리자 입력을 확인하고 client·최상위 그룹과 가입을 관리 API로 반영한다."""
+    users = []
+    for username in dict.fromkeys(admins):
+        matches = admin.call('GET', 'users', query={'username': username, 'exact': 'true'})
+        if len(matches) != 1 or matches[0]['username'].casefold() != username.casefold():
             raise ValueError(f'관리자로 지정한 Keycloak 사용자를 찾을 수 없습니다: {username}')
-        admin.call('PUT', f"users/{users[0]['id']}/groups/{groups[0]['id']}")
-        print(f'관리자 그룹 가입: {username}')
-    secret = (admin.call('GET', f"clients/{found[0]['id']}/client-secret") or {}).get('value')
+        users.append(matches[0])
+
+    client_id = configure_client(admin, oidc_client(values))
+    secret = (admin.call('GET', f'clients/{client_id}/client-secret') or {}).get('value')
     if not secret:
         raise ValueError('Keycloak client secret을 읽지 못했습니다. Client authentication이 켜져 있는지 확인하세요.')
+
+    query = {'search': ADMIN_GROUP, 'exact': 'true', 'populateHierarchy': 'false'}
+    group_path = f'/{ADMIN_GROUP}'
+    groups = admin.call('GET', 'groups', query=query)
+    group = next((item for item in groups if item['path'] == group_path), None)
+    if group is None:
+        admin.call('POST', 'groups', {'name': ADMIN_GROUP})
+        groups = admin.call('GET', 'groups', query=query)
+        group = next((item for item in groups if item['path'] == group_path), None)
+        if group is None:
+            raise ValueError(f'Keycloak에 생성한 그룹을 찾을 수 없습니다: {group_path}')
+        print(f'Keycloak 그룹 생성: {group_path}')
+    for user in users:
+        admin.call('PUT', f"users/{user['id']}/groups/{group['id']}")
+        print(f"관리자 그룹 가입: {user['username']}")
     return secret
 
 
@@ -314,7 +369,7 @@ def main():
     parser.add_argument('--env', type=Path)
     parser.add_argument('--ca-file', type=Path, help='OIDC 연결 검사에 사용할 로컬 PEM CA 묶음')
     parser.add_argument('--context', default='')
-    parser.add_argument('--admins', default='', help='headlamp-admins 그룹에 가입시킬 Keycloak username 목록(쉼표 구분)')
+    parser.add_argument('--admins', help='운영 env의 Headlamp 관리자 username 목록을 재정의합니다(쉼표 구분).')
     args = parser.parse_args()
     try:
         if args.action in {'deploy', 'ui', 'oidc-setup'} and not args.context.strip():
@@ -342,7 +397,8 @@ def main():
         env = args.env or APP / 'env/k8s.env'
         if args.action in {'deploy', 'oidc-setup'} and args.env is None:
             raise ValueError('배포에는 실제 --env 파일이 필요합니다.')
-        values = settings(env, example=args.env is None)
+        config = read_env(env)
+        values = settings(config, example=args.env is None)
         if args.action == 'setup-env':
             for key, value in setup_env(values).items():
                 print(f'{key}={value}')
@@ -351,7 +407,9 @@ def main():
             check_oidc_provider(values, args.ca_file)
             return
         if args.action == 'oidc-setup':
-            oidc_setup(args.context, values, args.ca_file, [name.strip() for name in args.admins.split(',') if name.strip()])
+            configured_admins = os.environ.get('HEADLAMP_ADMINS', config.get('HEADLAMP_ADMINS', ''))
+            admins = args.admins if args.admins is not None else configured_admins
+            oidc_setup(args.context, values, args.ca_file, [name.strip() for name in admins.split(',') if name.strip()])
             return
         if args.action == 'oidc-client':
             print(json.dumps(oidc_client(values), ensure_ascii=False, indent=2))

@@ -3,5 +3,6 @@
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
   "loginWithEmailAllowed": true
 }

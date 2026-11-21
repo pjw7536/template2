@@ -1,5 +1,6 @@
 /** 사용자 표시용 helper입니다. */
 export const JOB_TITLE_MAX_LENGTH = 80
+export const ORIGINAL_DEPARTMENT_MAX_LENGTH = 128
 
 export const attr = (user, name) => user?.attributes?.[name]?.[0] ?? ""
 

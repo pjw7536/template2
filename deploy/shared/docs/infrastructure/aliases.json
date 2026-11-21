@@ -55,6 +55,10 @@
       "value": "etch.samsungds.net",
       "role": "서비스 DNS 구역. 서비스 주소는 <서비스>.ZONE-A"
     },
+    "APP-IAM": {
+      "value": "members.etch.samsungds.net",
+      "role": "IAM 웹 공개 주소"
+    },
     "ZONE-OLD": {
       "value": "etch-sso.samsungds.net",
       "role": "전환 전 SSO 주소"

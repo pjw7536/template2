@@ -32,7 +32,7 @@
 | --- | --- |
 | `scripts/up.py` | `keycloak-check`·`keycloak-up`의 서버 검사·배포 |
 | `scripts/setup_discovery.py` | 설정 Job 실행과 Discovery 해석. `keycloak-oidc-check`·`keycloak-oidc-setup`은 IdP·mapper·선택 Portal client를 한 번에 실행 |
-| `scripts/00`~`05` 실행 파일 | Make 단계별 명령의 진입점. `keycloak-setup`은 `00`~`03`을 순서대로 실행 |
+| `scripts/00`~`05` 실행 파일 | Make 단계별 명령의 진입점. `keycloak-setup`은 `00`~`03`을 순서대로 실행하고 CSV가 있으면 `05`도 실행 |
 | `scripts/admin_env.py` | 관리 API 도구에 env의 관리자 계정을 환경변수로 전달. `KEYCLOAK_ADMIN_URL`·`USERNAME`·`PASSWORD` 중 하나라도 직접 지정하면 전달하지 않음 |
 | `scripts/init_sdwt.py` | `/org` 소속 그룹·사용자 등록과 공통 scope 연결. 적용 시 `org_sync.py`도 실행 |
 | `scripts/org_sync.py` | `keycloak-org-sync`의 소속별 역할·라인/팀 묶음·`org-claims` scope 반영. [소속별 역할](02-configure.md#소속별-역할) |
@@ -48,7 +48,7 @@ Portal client Job은 `deploy/portal/k8s/jobs/keycloak-client`가 소유합니다
 | --- | --- |
 | `keycloak-check` | env·공용 TLS 등록·manifest·기존 Secret·PV/PVC·공용 Traefik 존재·worker 상태를 조회하고 검사. 클러스터 변경 없음. 성공: `Keycloak 입력·원본·기존 Secret·worker 검사 통과. 클러스터를 변경하지 않았습니다.` |
 | `keycloak-up` | 같은 검사 뒤 없는 namespace·runtime Secret 생성, 새 PV일 때 DB 폴더 준비 Job, PostgreSQL·Keycloak 적용 후 rollout 대기(각 600초). 공용 Traefik은 있는지와 공용 TLS를 읽는지만 확인하고 설치·갱신하지 않음. 성공: `Keycloak 배포 완료: <공개 URL>` |
-| `keycloak-setup` | Realm → 사내 IdP 사전 검사 → 사내 IdP → User Profile → IdP mapper Job. [설정 단계와 Job](02-configure.md#설정-단계와-job) |
+| `keycloak-setup` | 입력 검사 → Realm → 사내 IdP → User Profile → IdP mapper Job → 입력 CSV 적용. [설정 단계와 Job](02-configure.md#설정-단계와-job) |
 | `keycloak-smoke` | 워크로드 Ready와 공개 주소의 discovery 응답을 조회 |
 
 최초 기동 시 관리자 계정을 만들고 이후 설정 Job도 같은 runtime Secret으로 로그인합니다.

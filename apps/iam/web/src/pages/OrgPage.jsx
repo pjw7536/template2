@@ -683,6 +683,7 @@ function PersonDetails({ person, editing, onClose, onSaved, onRefresh, triggerRe
     ["이메일", user.email],
     ["사번", attr(user, "sabun")],
     ["사내 부서", attr(user, "deptname")],
+    ["원소속 부서", attr(user, "original_deptname")],
     ["소속 팀", sdwt.team],
     ["라인", sdwt.line],
     ["분임조(파트·SDWT)", sdwt.name],

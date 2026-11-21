@@ -6,16 +6,22 @@ import { EMPTY_PICK, OrgPicker, pickOf } from "@/components/OrgPicker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { applyAffiliation, grantOrgRole, logoutUser, revokeOrgRole, userGroups, userOrgRoles } from "@/lib/api"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { applyAffiliation, grantOrgRole, logoutUser, revokeOrgRole, saveOriginalDepartment, userGroups, userOrgRoles } from "@/lib/api"
 import { LEVEL_NAMES, LEVELS, orgRoleName, parseOrgRole, planAffiliation, sdwtLevels } from "@/lib/plan"
-import { attr, displayName } from "@/lib/users"
+import { attr, displayName, ORIGINAL_DEPARTMENT_MAX_LENGTH } from "@/lib/users"
 
-/** 사용자 한 명의 소속(SDWT 하나)과 소속별 역할을 바꾸는 오른쪽 패널입니다. */
+/** 사용자 한 명의 원소속 부서·소속·소속별 역할을 바꾸는 오른쪽 패널입니다. */
 export default function UserPanel({ user, org, orgUuid, onClose, onSaved, onGroupsChanged }) {
   const [groups, setGroups] = useState(null)
   const [roles, setRoles] = useState(null)
   const [message, setMessage] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [departmentDraft, setDepartmentDraft] = useState(null)
+  const originalDepartment = attr(user, "original_deptname")
+  const draftDepartment = departmentDraft ?? originalDepartment
+  const departmentChanged = draftDepartment.trim() !== originalDepartment.trim()
   const [affiliation, setAffiliation] = useState(() => pickOf(org, attr(user, "user_sdwt_prod")))
   // 사용자가 직접 고르기 전에는 저장하지 않습니다. 현재 SDWT가 조직도에 없으면 선택이 비어 보여도 소속을 지우지 않습니다.
   const [touched, setTouched] = useState(false)
@@ -93,13 +99,30 @@ export default function UserPanel({ user, org, orgUuid, onClose, onSaved, onGrou
         <section className="grid gap-2">
           <h3 className="text-sm font-semibold">소속</h3>
           <dl className="grid grid-cols-3 overflow-hidden rounded-md border text-sm">
-            {[["팀(부서)", "deptname"], ["라인", "line_id"], ["SDWT", "user_sdwt_prod"]].map(([label, key]) => (
+            {[["SSO 부서", "deptname"], ["라인", "line_id"], ["SDWT", "user_sdwt_prod"]].map(([label, key]) => (
               <div key={key} className="border-r px-3 py-1.5 last:border-r-0">
                 <dt className="text-xs text-muted-foreground">{label}</dt>
                 <dd className="truncate font-medium" title={attr(user, key)}>{attr(user, key) || "-"}</dd>
               </div>
             ))}
           </dl>
+          <form className="grid gap-2" onSubmit={(event) => {
+            event.preventDefault()
+            if (busy || !departmentChanged) return
+            run(async () => {
+              const saved = await saveOriginalDepartment(user.id, draftDepartment, originalDepartment)
+              onSaved(saved)
+              setDepartmentDraft(null)
+            }, "원소속 부서를 저장했습니다.")
+          }}>
+            <Label htmlFor="iam-original-department">원소속 부서</Label>
+            <div className="flex gap-2">
+              <Input id="iam-original-department" value={draftDepartment}
+                maxLength={ORIGINAL_DEPARTMENT_MAX_LENGTH} disabled={busy}
+                onChange={(event) => setDepartmentDraft(event.target.value)} />
+              <Button type="submit" variant="outline" disabled={busy || !departmentChanged}>원소속 저장</Button>
+            </div>
+          </form>
           <p className="text-xs text-muted-foreground">
             소속은 한 사람당 SDWT 하나입니다. 바꾸면 이전 SDWT 그룹에서 빠지고 새 SDWT 그룹에 들어가며, 소속 SDWT의 일반 역할은 자동으로 따라옵니다. 아래 소속별 역할은 그대로입니다.
           </p>
@@ -124,7 +147,7 @@ export default function UserPanel({ user, org, orgUuid, onClose, onSaved, onGrou
           {plan.error ? <p className="text-xs text-destructive">{plan.error}</p> : null}
           {incomplete ? <p className="text-xs text-muted-foreground">라인과 SDWT까지 고르세요.</p> : null}
           {plan.teamMismatch && !incomplete ? (
-            <p className="text-xs text-chart-4">사내 부서({attr(user, "deptname")})와 다른 팀({plan.team})의 SDWT입니다. 팀은 사내 부서로 정해지므로 인사 정보를 확인하세요.</p>
+            <p className="text-xs text-chart-4">SSO 부서({attr(user, "deptname")})와 선택한 SDWT의 팀({plan.team})이 다릅니다.</p>
           ) : null}
           {plan.changed && !plan.error ? (
             <ul className="grid gap-0.5 font-mono text-xs text-muted-foreground">

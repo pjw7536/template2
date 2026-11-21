@@ -175,6 +175,25 @@
       }
     },
     {
+      "name": "original_deptname",
+      "displayName": "원소속 부서",
+      "permissions": {
+        "view": [
+          "admin",
+          "user"
+        ],
+        "edit": [
+          "admin"
+        ]
+      },
+      "multivalued": false,
+      "validations": {
+        "length": {
+          "max": 128
+        }
+      }
+    },
+    {
       "name": "deptid",
       "displayName": "deptid",
       "permissions": {

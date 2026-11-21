@@ -12,8 +12,8 @@
 `etch` realm에 Headlamp 전용 client를 등록하고, 사용할 사람을 관리자 그룹에 넣은 뒤 client secret을 Kubernetes에 전달하는 일입니다.
 `make ops-deploy APP=headlamp`의 `headlamp-oidc-setup` 단계가 Keycloak 관리 API로 이 일을 수행합니다([가이드 A](../README.md#a-최초-설치), [B](../README.md#b-업데이트)).
 
-- client와 `headlamp-admins` 그룹이 없으면 만듭니다. 기존 client 설정은 바꾸지 않습니다.
-- `HEADLAMP_ADMINS`로 받은 Keycloak username을 `headlamp-admins`에 가입시킵니다. 지정하지 않으면 그룹만 만들고 구성원은 넣지 않습니다. 사용자를 찾지 못하면 오류로 멈춥니다.
+- client와 `/headlamp-admins` 그룹을 준비합니다. 기존 client의 redirect, 로그인 방식, 기본 `profile`·`email` scope와 그룹 mapper는 배포 정의로 맞추고 기존 client secret을 사용합니다.
+- 운영 env의 `HEADLAMP_ADMINS`에 지정한 사용자를 전부 조회한 뒤 그룹에 가입시킵니다. 사용자가 없으면 Keycloak 설정 변경 전에 중단합니다.
 - Keycloak의 client secret을 `headlamp` namespace의 Secret(`headlamp-oidc`)으로, CA 묶음을 ConfigMap(`headlamp-oidc-ca`)으로 등록합니다. namespace가 없으면 만듭니다.
 - Keycloak 관리자 계정은 `KEYCLOAK_ENV`에서 읽습니다([Keycloak 관리 API](../../shared/docs/infrastructure/access.md#keycloak-관리-api)).
 
@@ -22,7 +22,7 @@
 | 출력 | 뜻 |
 | --- | --- |
 | `Keycloak client 등록: headlamp` | client를 새로 만듦 |
-| `Keycloak client가 이미 있어 설정을 바꾸지 않았습니다: headlamp` | 기존 client를 그대로 씀. [2. 기존 client 대조](#2-기존-client-대조)를 수행 |
+| `Keycloak client 설정 반영: headlamp` | 기존 client의 로그인 속성 변경을 반영 |
 | `Keycloak 그룹 생성: /headlamp-admins` | 관리자 그룹을 새로 만듦 |
 | `관리자 그룹 가입: <username>` | `HEADLAMP_ADMINS`의 사용자를 가입시킴 |
 
@@ -59,7 +59,7 @@ make -s headlamp-setup-env
 
 ### 2. 기존 client 대조
 
-`headlamp-oidc-setup`이 `Keycloak client가 이미 있어 설정을 바꾸지 않았습니다`를 출력했을 때 수행합니다.
+재배포 후 실제 저장값을 확인할 때 사용합니다.
 
 [조회] [Keycloak 관리 API](../../shared/docs/infrastructure/access.md#keycloak-관리-api) 절의 방법으로 `etch` realm의 `clients?clientId=headlamp` 응답을 받아 1번의 `make headlamp-oidc-client` 출력과 대조합니다. 응답의 `secret` 값은 출력하거나 기록하지 않습니다.
 
@@ -69,16 +69,16 @@ make -s headlamp-setup-env
 - `protocolMappers`의 `headlamp-groups`가 `claim.name` `groups`, `full.path` `true`, `id.token.claim` `true`
 
 mapper의 세 값이 맞아야 API server가 관리자 그룹을 알아봅니다.
-다른 항목이 있으면 멈추고 다른 항목의 이름과 두 값을 보고합니다. client를 지우고 다시 만들거나 client secret을 Regenerate하지 않습니다.
+관리 대상 값에 차이가 있으면 [Headlamp 업데이트](../README.md#b-업데이트)로 원하는 운영 env를 다시 적용합니다.
 
 ### 3. 사용할 사람을 그룹에 넣기
 
 - 가입: [가이드 B](../README.md#b-업데이트)의 `관리자 추가`(`HEADLAMP_ADMINS`)로 합니다. 그룹은 도구가 **최상위**에 `headlamp-admins`로 만듭니다. 그룹 이름에는 `/`가 없고 토큰에는 전체 경로 `/headlamp-admins`가 들어갑니다. 기본 가입 그룹으로 지정하지 않습니다.
-- 그룹에서 빼기: [변경] 도구에 제거 기능이 없으므로 [Keycloak 관리 API](../../shared/docs/infrastructure/access.md#keycloak-관리-api) 절의 방법으로 `etch` realm의 `users/<사용자 id>/groups/<그룹 id>`를 `DELETE`합니다. 가입에 쓰는 것과 같은 자원이며, 사용자 id는 `users?username=<username>&exact=true`, 그룹 id는 `groups?search=headlamp-admins&exact=true`로 조회합니다.
+- 그룹에서 빼기: [변경] 먼저 `HEADLAMP_ADMINS` 입력에서 제거합니다. [Keycloak 관리 API](../../shared/docs/infrastructure/access.md#keycloak-관리-api) 절의 방법으로 `etch` realm의 `users/<사용자 id>/groups/<그룹 id>`를 `DELETE`합니다. 사용자 id는 `users?username=<username>&exact=true`, 그룹 id는 `groups?search=headlamp-admins&exact=true` 응답의 `/headlamp-admins` 경로에서 조회합니다.
   확인: `users/<사용자 id>/groups` 응답에 `/headlamp-admins`가 없습니다. 이후 새 토큰으로 [권한 확인](03-deploy.md#kubernetes-rbac-확인)을 합니다.
 
 사용자는 Keycloak username(EPID `userid`), 사내 로그인 ID(`loginid`), 표시 이름(`display_name`)으로 확인합니다.
-CSV로 미리 등록한 사용자는 Account Console에서 첫 사내 로그인을 마치고 Identity provider links에 `oidc`가 연결된 뒤 가입시킵니다.
+CSV로 미리 등록한 사용자는 첫 사내 로그인을 마친 뒤 관리 API의 `users/<사용자 id>/federated-identity`에서 `oidc` 연결을 확인하고 관리자 목록에 추가합니다.
 Headlamp용 계정을 따로 만들거나 EPID를 바꾸지 않으며, SDWT의 `/{SDWT}/admin` 그룹은 이 그룹을 대신하지 않습니다.
 이 그룹은 **모든 namespace를 관리하고 Secret도 읽을 수 있는 클러스터 관리자**용입니다. 접근 거부 검증에는 그룹 밖 시험 계정을 씁니다.
 그룹 변경은 기존 ID Token이 만료되거나 새로 로그인할 때 반영됩니다.

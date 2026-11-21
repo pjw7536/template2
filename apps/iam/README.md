@@ -57,11 +57,13 @@ Keycloak의 소속(팀·라인·SDWT), 소속별 역할, 앱 역할을 관리하
 
 조직 탭의 트리·상세 목록과 팀·라인·SDWT별 인원 집계는 실제 SDWT 그룹 소속만 기준으로 합니다. 다른 소속이면서 역할만 직접 받은 사람은 목록과 집계에 포함하지 않습니다. 구성원은 이름순으로 정렬합니다. 직급은 인사 속성 `grdName`, 직책은 관리자가 입력하는 `job_title`이며 값이 없으면 `-`로 표시합니다. 트리에는 직책, 파트 상세 목록에는 직급·직책을 구분해 표시합니다. 소속별 역할 관리는 권한 탭의 사용자 패널에서 할 수 있습니다.
 
-트리 또는 오른쪽 상세에서 구성원 이름을 누르면 사용자 상세정보 창이 열립니다. 이름·직급·EPID·로그인 ID·이메일·사번·사내 부서와 실제 소속 팀·라인·분임조(파트·SDWT)를 표시하고, 보기 상태에서는 직책을 조회하고 편집 상태에서는 `직책`을 수정할 수 있습니다. 값이 없으면 `-`로 표시합니다. 이름 버튼은 Enter/Space로도 열 수 있고, 닫으면 누른 이름으로 초점이 돌아갑니다. 소속 이동은 이름 옆의 이동 핸들을 사용합니다.
+트리 또는 오른쪽 상세에서 구성원 이름을 누르면 사용자 상세정보 창이 열립니다. 이름·직급·EPID·로그인 ID·이메일·사번·사내 부서·원소속 부서와 실제 소속 팀·라인·분임조(파트·SDWT)를 표시하고, 보기 상태에서는 직책을 조회하고 편집 상태에서는 `직책`을 수정할 수 있습니다. 값이 없으면 `-`로 표시합니다. 이름 버튼은 Enter/Space로도 열 수 있고, 닫으면 누른 이름으로 초점이 돌아갑니다. 소속 이동은 이름 옆의 이동 핸들을 사용합니다.
 
 직책은 `편집`을 켠 뒤 사용자 상세의 입력란에서 최대 80자로 입력하고 `직책 저장`을 누릅니다. `PL`·`파트장`을 제안하며 다른 직책도 입력할 수 있습니다. 비우고 저장하면 직책을 해제합니다. 저장 결과는 조직도·구성원 목록·직책별 담당자에 바로 반영됩니다. 화면을 연 뒤 다른 관리자가 직책을 바꿨으면 저장을 중단하므로 창을 닫고 다시 열어 확인합니다. 저장 중에는 창 닫기와 중복 저장을 막습니다.
 
 직책은 [Keycloak User Profile](../../deploy/keycloak/k8s/claims/account-user-profile.json)의 단일 속성 `job_title`이며 관리자만 수정합니다. 사내 IdP에서 수신하거나 앱 토큰에 발급하지 않으며 로그인 때 덮어쓰지 않습니다. 직급·소속·권한 역할을 변경하지 않습니다. 프로필 반영 방법은 [User Profile 설정](../../deploy/keycloak/docs/02-configure.md#user-profile과-수신-mapper)을 따릅니다.
+
+원소속 부서는 권한 탭에서 사용자 이름을 눌러 사용자 패널의 `원소속 부서`에 입력하고 `원소속 저장`으로 반영합니다. 빈 값으로 저장하면 기록을 지웁니다. SSO 부서는 `deptname`에 표시하며, 원소속 부서는 선택 속성 `original_deptname`으로 저장합니다. [User Profile 설정](../../deploy/keycloak/docs/02-configure.md#user-profile-권한)
 
 한 번에 한 사람의 소속을 옮깁니다. 드래그 대상은 현재 트리에 표시된 팀·라인 범위입니다. 핸들을 클릭하거나 키보드로 초점을 맞추고 Enter/Space를 누르면 같은 이동창이 열리며, 다른 팀·라인도 선택할 수 있습니다. `편집` 토글이 켜져 있어야 합니다.
 
@@ -72,9 +74,8 @@ Keycloak의 소속(팀·라인·SDWT), 소속별 역할, 앱 역할을 관리하
 
 ## 사용 조건
 
-- Keycloak에 `iam` client, `/iam/platform-admins` 그룹, `org` client 관리 권한이 있어야 합니다. 준비 도구는 [deploy/iam](../../deploy/iam/README.md)에 있습니다.
-- 소속별 역할 client `org`는 `make keycloak-org-sync`가 만듭니다. 앱 열과 `org` client id는 `/iam` 그룹의 카탈로그에서 읽으므로 그 뒤 [앱 역할 반영](../../deploy/keycloak/docs/02-configure.md#앱-역할)(`make keycloak-access-apply`)을 실행합니다.
-- `/iam/platform-admins`에 가입한 사용자만 사용할 수 있습니다. 가입은 Keycloak Admin Console에서 지정합니다.
+- [IAM 배포](../../deploy/iam/README.md)는 `iam` client, `/iam/platform-admins` 그룹, `org` client·관리 권한과 앱 역할 카탈로그를 반영합니다. 웹은 `/iam` 속성의 카탈로그에서 앱 열과 `org` client id를 읽습니다.
+- `/iam/platform-admins`에 가입한 사용자만 사용할 수 있습니다. 기존 사용자를 추가하려면 배포 입력의 `IAM_PLATFORM_ADMIN_USERNAMES`에 정확한 username을 지정합니다.
 - 사용자는 사내 로그인을 한 번 이상 해야 Keycloak에 존재하므로 검색·업로드 대상이 됩니다.
 
 ## 권한 모델
@@ -119,7 +120,7 @@ SDWT S의 데이터            : min(앱 역할, org_roles 중 sdwt:S:<등급>�
 ### 새 앱 추가
 
 1. 앱 배포에서 Keycloak 로그인 client를 만듭니다. 토큰에 자기 역할만 들어가도록 `fullScopeAllowed=false`로 둡니다.
-2. [카탈로그](../../deploy/keycloak/access/catalog.json)에 앱을 추가하고 `make keycloak-access-apply`, `make keycloak-org-sync`를 실행합니다.
+2. [카탈로그](../../deploy/keycloak/access/catalog.json)에 앱을 추가하고 [IAM 업데이트](../../deploy/iam/README.md#b-업데이트)를 실행합니다.
    역할·기본 역할이 만들어지고, 앱 client에 `affiliation`·`org_roles` scope가 연결되며, 권한관리 웹 매트릭스에 열이 바로 나타납니다(웹 재배포 불필요).
 3. 앱은 `resource_access.<clientId>.roles`와 `org_roles`로 위 규칙대로 판단합니다.
 
@@ -201,8 +202,8 @@ make local-keycloak-dummy DUMMY_LINES=12 DUMMY_TOTAL_USERS=2000
 
 기존 일반 사용자와 소속 그룹은 보존합니다. 예약 EPID와 실제 사용자가 충돌하면 중단합니다. 기존 더미의 `/org` 소속은 하나로 맞추고 다른 그룹·직접 권한은 유지합니다. 같은 규모로 재실행해도 사용자를 중복 생성하지 않습니다. 자동으로 라인·SDWT·목표 범위 밖의 더미를 삭제하지 않으므로 규모를 줄이는 용도로는 사용하지 않습니다. 작업 후 실제 사용자 수·더미의 단일 소속·직책 수와 일반 사용자 속성·소속·직접 권한 보존을 조회해 검증합니다.
 
-realm JSON에는 Portal 개발용 이전 그룹(`/SDWT-A/…`)만 있고 `/org` 소속 트리는 없습니다. 개발 Keycloak에 `make keycloak-sdwt-init`(또는 조직 탭 SDWT 추가), `make keycloak-org-sync`, [deploy/iam](../../deploy/iam/README.md) 준비 도구, `make keycloak-access-apply`를 차례로 실행합니다.
+realm JSON에는 Portal 개발용 그룹(`/SDWT-A/…`)이 들어 있습니다. `/org` 소속 트리는 `make keycloak-sdwt-init` 또는 조직 탭의 SDWT 추가로 구성합니다. 개발 realm에 IAM 설정을 맞출 때는 [IAM 배포 도구](../../deploy/iam/README.md)를 같은 개발 연결 및 realm에 실행합니다.
 
 ## 남은 작업
 
-배포 이미지·Kubernetes 정의·`deploy/shared/apps.json` 등록은 아직 없습니다.
+[IAM 운영 배포](../../deploy/iam/README.md)는 카탈로그의 설정 전용 앱으로 Keycloak을 구성합니다. 웹·업무 부하 API의 배포 이미지와 Kubernetes 정의는 남아 있습니다.

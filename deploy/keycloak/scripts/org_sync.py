@@ -187,6 +187,12 @@ class OrgSync:
         self.scope_default = any(item["name"] == SCOPE for item in defaults)
         if not self.scope_default:
             self.plan.append(f"'{SCOPE}'를 realm 기본 scope로 지정")
+        self.map_scope = True
+        if self.scope and self.client:
+            mapped = api.call("GET", f"client-scopes/{segment(self.scope['id'])}/scope-mappings/clients/{segment(self.client['id'])}")
+            self.map_scope = not any(item["name"] == ALL_ROLE for item in mapped)
+        if self.map_scope:
+            self.plan.append(f"'{SCOPE}'에 '{ALL_ROLE}' 역할 연결")
         self.attach = []
         for client_id in catalog_clients():
             client = one(api.call("GET", "clients", query={"clientId": client_id}), "clientId", client_id)
@@ -222,8 +228,7 @@ class OrgSync:
             api.call("POST", "client-scopes", claims_scope())
             self.scope = one(api.call("GET", "client-scopes"), "name", SCOPE)
         # org client 역할이 앱 토큰에 들어가도록 scope에 전체 묶음 역할을 연결합니다(앱 client는 fullScopeAllowed=false).
-        mapped = api.call("GET", f"client-scopes/{segment(self.scope['id'])}/scope-mappings/clients/{segment(self.client['id'])}")
-        if not any(item["name"] == ALL_ROLE for item in mapped):
+        if self.map_scope:
             api.call("POST", f"client-scopes/{segment(self.scope['id'])}/scope-mappings/clients/{segment(self.client['id'])}", [roles[ALL_ROLE]])
         if not self.scope_default:
             api.call("PUT", f"default-default-client-scopes/{segment(self.scope['id'])}")

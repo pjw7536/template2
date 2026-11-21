@@ -284,7 +284,7 @@
       ],
       "commands": {
         "static": [
-          ["python3", "-m", "py_compile", "deploy/iam/scripts/setup_keycloak.py"]
+          ["python3", "deploy/iam/scripts/setup_keycloak.py", "--help"]
         ],
         "check": ["python3", "deploy/keycloak/scripts/admin_env.py", "--env", "{KEYCLOAK_ENV}", "--", "python3", "deploy/iam/scripts/setup_keycloak.py", "--env", "{IAM_ENV}"],
         "up": ["python3", "deploy/keycloak/scripts/admin_env.py", "--env", "{KEYCLOAK_ENV}", "--", "python3", "deploy/iam/scripts/setup_keycloak.py", "--env", "{IAM_ENV}", "--apply"]

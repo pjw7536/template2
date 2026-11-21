@@ -22,6 +22,7 @@
 | Prometheus 수집 대상 | `https://prometheus.etch.samsungds.net/targets` | Monitoring 운영 안내 |
 | Alertmanager | `https://alert.etch.samsungds.net/` | Monitoring 운영 안내 |
 | Headlamp | `https://headlamp.etch.samsungds.net/` | Headlamp 운영 안내 |
+| IAM 웹 공개 주소 | `https://members.etch.samsungds.net/` | 사용자 확정. [IAM 운영 env](../../../iam/env/prod.env)의 `IAM_PUBLIC_URL`. DNS·TLS·웹 공개는 미확인 |
 | 사내 이미지 저장소(Zot) | `https://store.etch.samsungds.net/` | `deploy/registry/env/k8s.env`의 `REGISTRY_HOST`. DNS·TLS 등록과 서버 적용 미확인 |
 | MinIO S3·클러스터 내부 | `http://minio.minio.svc.cluster.local:9000` | MinIO 운영 안내 |
 | Portal API·클러스터 내부 | `http://api.tailwind-internal.svc.cluster.local:8000` | Airflow `AIRFLOW_API_BASE_URL` |
@@ -44,6 +45,7 @@ Portal은 같은 origin의 `/api`·`/auth`를 유지하며 다른 제품 앱을 
 | MinIO | `MINIO_API_HOST`·`MINIO_CONSOLE_HOST`·콘솔 redirect URL, Portal Web의 `VITE_MINIO_ENDPOINT` |
 | Monitoring | `GRAFANA_HOST`·`PROMETHEUS_HOST`·`ALERTMANAGER_HOST`, root URL·route prefix |
 | Headlamp | `HEADLAMP_HOST`, 루트 base URL·Keycloak `/oidc-callback` |
+| IAM | `IAM_PUBLIC_URL`에 선언한 공개 origin과 Keycloak `iam` client의 redirect·web origin |
 
 ### 테스트 환경과 예비 주소의 인증서 예약안
 

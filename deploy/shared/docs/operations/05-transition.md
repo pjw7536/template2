@@ -22,6 +22,7 @@ kubectl --context "<context>" get configmaps -A -l deploy-record -o custom-colum
 | [3. Portal env 값 반영](#3-portal-env-값-반영) | Portal이 설치돼 있고 Airflow 호출에 필요한 host 또는 계정 입력을 확인해야 하는 경우 |
 | [4. 초기 계정 값 확인](#4-초기-계정-값-확인) | 기존 설치의 실제 계정과 연결에 쓰는 env 또는 계정 파일이 맞는지 확인해야 하는 경우 |
 | [5. Airflow 이미지에서 DAG 분리](#5-airflow-이미지에서-dag-분리) | 기존 Airflow 설치에 새 이미지나 DAG 폴더를 적용할 경우 |
+| [6. Keycloak과 IAM 설정 확인](#6-keycloak과-iam-설정-확인) | 기존 realm·Headlamp client 또는 IAM 설정을 배포 정의와 맞출 경우 |
 
 `deploy-record-ingress`는 공용 Traefik 인수 여부를 확인하는 데 사용합니다. 다른 작업은 해당 앱의 배포 기록과 실제 상태로 확인합니다. 적용할 항목이 있으면 시작 전 검사 후 해당 절의 순서대로 진행합니다. Airflow 갱신이 필요하면 [DAG 분리 절차](#5-airflow-이미지에서-dag-분리)에서 기존 DAG 위치를 먼저 확인합니다.
 
@@ -170,9 +171,27 @@ Airflow가 배포된 경우에 수행합니다.
 
 DAG·테스트만 바뀐 커밋은 이미지 tag가 같으므로 `make airflow-check`가 `이미지 변경: 없음`을 출력하고, DAG는 `make airflow-dags-sync`로만 반영합니다.
 
+## 6. Keycloak과 IAM 설정 확인
+
+1. [조회] 관리 호스트에서 배포에 사용한 env로 Keycloak의 username 정책과 원소속 부서 프로필을 확인합니다.
+   ```bash
+   python3 deploy/keycloak/scripts/admin_env.py --env "<Keycloak env 경로>" -- python3 -c '
+   import sys
+   sys.path.insert(0, "deploy/keycloak/scripts")
+   from init_sdwt import Admin
+   api = Admin("etch")
+   print("registrationEmailAsUsername:", api.call("GET")["registrationEmailAsUsername"])
+   profile = api.call("GET", "users/profile")
+   print("original_deptname:", any(field["name"] == "original_deptname" for field in profile["attributes"]))
+   '
+   ```
+   기대 결과는 `registrationEmailAsUsername: False`와 `original_deptname: True`입니다. 차이가 있으면 [변경] [Keycloak 업데이트](../../../keycloak/README.md#b-업데이트)를 실행한 뒤 위 조회를 반복합니다.
+2. Headlamp가 설치된 환경은 [조회] [기존 client 대조](../../../headlamp/docs/02-authentication.md#2-기존-client-대조)로 redirect·PKCE·그룹 mapper를 확인합니다. 차이나 승인된 신규 관리자가 있으면 [변경] [Headlamp 업데이트](../../../headlamp/README.md#b-업데이트)를 수행한 뒤 [배포 후 확인](../../../headlamp/README.md#c-배포-후-확인)을 실행합니다.
+3. IAM 설정을 이미 적용한 환경은 저장소 밖 운영 env의 `IAM_PUBLIC_URL`을 [IAM 공개 주소](../infrastructure/services.md#서비스-접속-주소)와 대조합니다. 같은 입력으로 [조회] [IAM 배포 후 확인](../../../iam/README.md#c-배포-후-확인)을 실행해 client redirect·web origin과 조직 역할·관리 권한·카탈로그를 확인합니다. 차이가 있으면 [IAM 업데이트](../../../iam/README.md#b-업데이트)에 따라 적용한 뒤 확인을 반복합니다.
+
 ## 완료 확인
 
-[조회] 변경한 앱의 리소스와 배포 기록을 대조합니다.
+[조회] 변경한 워크로드의 리소스와 배포 기록을 대조합니다. IAM 설정의 완료 기준은 [IAM 가이드](../../../iam/README.md#c-배포-후-확인)를 따릅니다.
 
 ```bash
 make drift-check APP=<app> KUBE_CONTEXT="<context>" DRIFT_JSON=1

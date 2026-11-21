@@ -72,10 +72,13 @@ keycloak-access-test:
 local-keycloak-dummy:
 	python3 local/keycloak/scripts/seed_org_dummy.py $(if $(filter 1,$(DUMMY_REMOVE)),--remove,$(if $(DUMMY_LINES),--lines $(DUMMY_LINES) --total-users $(or $(DUMMY_TOTAL_USERS),2000),))
 
-# 권한관리 웹용 Keycloak client·그룹 준비. 기본은 dry-run(iam-check)이며 IAM_KEYCLOAK_APPLY=1이면 적용(iam-up)합니다.
-.PHONY: iam-keycloak-setup
+# IAM이 쓰는 Keycloak 설정을 준비하거나 실제 적용 상태를 조회합니다.
+IAM_ENV ?= $(CURDIR)/deploy/iam/env/prod.env
+.PHONY: iam-keycloak-setup iam-verify
 iam-keycloak-setup:
 	@$(MAKE) --no-print-directory $(if $(filter 1,$(IAM_KEYCLOAK_APPLY)),iam-up,iam-check)
+iam-verify:
+	$(KEYCLOAK_ADMIN) python3 deploy/iam/scripts/setup_keycloak.py --env "$(IAM_ENV)" --verify
 
 .PHONY: iam-workload-dev
 iam-workload-dev:
@@ -106,11 +109,17 @@ keycloak-portal-client-setup:
 # realm → 사내 IdP → 사용자 프로필 → IdP mapper를 순서대로 실행합니다. 각 단계는 다시 실행해도 같은 결과입니다.
 .PHONY: keycloak-setup
 keycloak-setup:
-	bash deploy/keycloak/scripts/00-create-realm.sh --context "$(KUBE_CONTEXT)"
+ifneq ($(strip $(KEYCLOAK_SDWTS_CSV)$(KEYCLOAK_USERS_CSV)),)
+	$(MAKE) keycloak-sdwt-init KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=0 KEYCLOAK_SDWT_VALIDATE_ONLY=1
+endif
 	python3 deploy/keycloak/scripts/setup_discovery.py check --step idp --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)"
+	bash deploy/keycloak/scripts/00-create-realm.sh --context "$(KUBE_CONTEXT)"
 	bash deploy/keycloak/scripts/01-create-idp.sh --context "$(KUBE_CONTEXT)" --env "$(KEYCLOAK_ENV)"
 	bash deploy/keycloak/scripts/02-register-user-profile.sh --context "$(KUBE_CONTEXT)"
 	bash deploy/keycloak/scripts/03-sync-idp-mappers.sh --context "$(KUBE_CONTEXT)"
+ifneq ($(strip $(KEYCLOAK_SDWTS_CSV)),)
+	$(MAKE) keycloak-sdwt-init KEYCLOAK_SDWT_CLIENTS= KEYCLOAK_SDWT_APPLY=1 KEYCLOAK_SDWT_VALIDATE_ONLY=0 KEYCLOAK_TARGET_REALM=etch
+endif
 
 .PHONY: keycloak-oidc-check keycloak-oidc-setup
 keycloak-oidc-check:
@@ -398,9 +407,9 @@ audit-docs:
 # Keycloak 로그인 방식의 서버 Headlamp를 독립적으로 운영합니다.
 HEADLAMP_ENV ?= $(CURDIR)/deploy/headlamp/env/k8s.env
 .PHONY: headlamp-ui headlamp-fetch-chart headlamp-oidc-client headlamp-oidc-check headlamp-oidc-setup headlamp-setup-env
-# Keycloak client·관리자 그룹과 Headlamp namespace의 client secret·CA ConfigMap을 준비합니다. HEADLAMP_ADMINS로 관리자 username을 지정합니다.
+# Keycloak client·관리자 그룹과 Headlamp namespace의 client secret·CA ConfigMap을 준비합니다.
 headlamp-oidc-setup:
-	$(KEYCLOAK_ADMIN) python3 ./deploy/headlamp/scripts/manage.py oidc-setup --context "$(KUBE_CONTEXT)" --env "$(HEADLAMP_ENV)" $(if $(HEADLAMP_OIDC_CA_FILE),--ca-file "$(HEADLAMP_OIDC_CA_FILE)") $(if $(HEADLAMP_ADMINS),--admins "$(HEADLAMP_ADMINS)")
+	$(KEYCLOAK_ADMIN) python3 ./deploy/headlamp/scripts/manage.py oidc-setup --context "$(KUBE_CONTEXT)" --env "$(HEADLAMP_ENV)" $(if $(HEADLAMP_OIDC_CA_FILE),--ca-file "$(HEADLAMP_OIDC_CA_FILE)")
 headlamp-setup-env:
 	@python3 ./deploy/headlamp/scripts/manage.py setup-env --env "$(HEADLAMP_ENV)"
 headlamp-oidc-check:

@@ -145,7 +145,7 @@ realm 설정, client·그룹·역할, 사용자 조회에 씁니다. 관리 화�
 | --- | --- |
 | 접근 방법 | 저장소의 Make 타깃(`keycloak-setup`, `keycloak-access-apply`, `keycloak-org-sync`, `headlamp-oidc-setup`, `airflow-keycloak-client`, `iam-check`·`iam-up`). 타깃이 없는 설정은 `python3 deploy/keycloak/scripts/admin_env.py --env <Keycloak env> -- <명령>`으로 관리자 환경변수를 받아 Admin REST API 호출 |
 | 계정 위치 | Keycloak env의 `bootstrap-admin-username`·`bootstrap-admin-password`. CA는 `deploy/shared/certs/<SSO host>/keycloak-ca-bundle.pem` |
-| 완료 확인 | 각 타깃의 성공 문구. dry-run이 있는 타깃은 다시 실행해 `변경 없음` 확인 |
+| 완료 확인 | 각 타깃의 성공 문구. IAM은 [IAM 배포 후 확인](../../../iam/README.md#c-배포-후-확인)의 `iam-verify` 결과 확인 |
 | 확인 상태 | 저장소 선언. 서버 적용은 [대기 작업](pending.md#3-앱-배포) |
 | 막히면 요청할 것 | 관리자 계정이 env와 다르면 실제 계정 정보의 위치 |
 

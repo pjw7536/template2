@@ -75,7 +75,7 @@
    | 필드 | 뜻 | 할 일 |
    | --- | --- | --- |
    | `failedStep` | `null`이면 모든 단계 성공. `preflight`면 준비 검사에서 막힘. 그 밖에는 실패한 단계 이름 | `null`이 아니면 6번 |
-   | `driftResultCode` | `0` 일치, `1` 불일치·경고, `2` 판정 불가 | `0`이 아니면 `make drift-check APP=<app> KUBE_CONTEXT="<context>"`로 근거 조회 |
+   | `driftResultCode` | `0` 일치 또는 설정 전용 앱의 대조 생략, `1` 불일치·경고, `2` 판정 불가 | `0`이 아니면 `make drift-check APP=<app> KUBE_CONTEXT="<context>"`로 근거 조회. 설정 전용 앱은 해당 가이드의 검증 출력 확인 |
    | `blocked` | 저장소 도구로 해결하지 못한 준비 항목. `item`·`detail`과, 있으면 `command`·`reference` | `reference`가 가리키는 [접근 경로](shared/docs/infrastructure/access.md) 절로 해결한 뒤 같은 명령을 다시 실행 |
    | `pending` | 배포는 끝났지만 남은 일(DNS 등록 등) | `reference`의 절로 수행하고, 못 하면 [pending](shared/docs/infrastructure/pending.md)에 기록 |
 

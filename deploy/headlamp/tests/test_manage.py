@@ -24,7 +24,7 @@ class DeploymentTest(unittest.TestCase):
     """외부 명령 실행 전에 잘못된 입력이 거부되는지 확인한다."""
 
     def test_oidc_provider_checks_real_contract_without_credentials(self):
-        values = manage.settings(manage.APP / 'env/k8s.env')
+        values = manage.settings(manage.read_env(manage.APP / 'env/k8s.env'))
         issuer = next(item['value'] for item in values['env'] if item['name'] == 'OIDC_ISSUER_URL')
         discovery = {
             'issuer': issuer, 'response_types_supported': ['code'],
@@ -62,7 +62,7 @@ class DeploymentTest(unittest.TestCase):
                 tls.assert_called_once_with(cafile='/test/ca.pem')
 
     def test_oidc_provider_requires_local_ca_and_propagates_tls_failure(self):
-        values = manage.settings(manage.APP / 'env/k8s.env')
+        values = manage.settings(manage.read_env(manage.APP / 'env/k8s.env'))
         with patch.object(manage.urllib.request.OpenerDirector, 'open') as request:
             with self.assertRaisesRegex(ValueError, 'HEADLAMP_OIDC_CA_FILE'):
                 manage.check_oidc_provider(values)
@@ -73,7 +73,7 @@ class DeploymentTest(unittest.TestCase):
                 manage.check_oidc_provider(values, Path('/test/ca.pem'))
 
     def test_default_profile_is_valid_production_input(self):
-        values = manage.settings(manage.APP / 'env/k8s.env')
+        values = manage.settings(manage.read_env(manage.APP / 'env/k8s.env'))
         env = {entry['name']: entry['value'] for entry in values['env']}
         self.assertEqual(env['OIDC_ISSUER_URL'], 'https://sso.etch.samsungds.net/realms/etch')
         self.assertEqual(values['volumes'][0]['configMap']['name'], 'headlamp-oidc-ca')
@@ -102,9 +102,9 @@ class DeploymentTest(unittest.TestCase):
                           'HEADLAMP_REGISTRY=mirror.test\nUNKNOWN=value']:
                 path.write_text(value)
                 with self.assertRaises(ValueError):
-                    manage.settings(path)
+                    manage.settings(manage.read_env(path))
             path.write_text('HEADLAMP_REGISTRY=mirror.test:5000/ghcr\nIMAGE_PULL_SECRET=pull-secret' + OIDC_ENV)
-            self.assertEqual(manage.settings(path)['imagePullSecrets'], [{'name': 'pull-secret'}])
+            self.assertEqual(manage.settings(manage.read_env(path))['imagePullSecrets'], [{'name': 'pull-secret'}])
 
     def test_chart_tamper(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -126,12 +126,12 @@ class DeploymentTest(unittest.TestCase):
                              ('HEADLAMP_HOST=ui.example.test', 'HEADLAMP_HOST=')]:
                 path.write_text(valid.replace(old, new))
                 with self.subTest(new=new), self.assertRaises(ValueError):
-                    manage.settings(path)
+                    manage.settings(manage.read_env(path))
             path.write_text(valid + '\nHEADLAMP_OIDC_CLIENT_SECRET=must-not-accept')
             with self.assertRaises(ValueError):
-                manage.settings(path)
+                manage.settings(manage.read_env(path))
             path.write_text(valid + '\nHEADLAMP_OIDC_CA_CONFIGMAP=headlamp-ca')
-            values = manage.settings(path)
+            values = manage.settings(manage.read_env(path))
             env = {item['name']: item['value'] for item in values['env']}
             self.assertEqual(env['OIDC_CALLBACK_URL'], 'https://ui.example.test/oidc-callback')
             self.assertEqual(env['SSL_CERT_FILE'], '/etc/headlamp-ca/ca.crt')
@@ -213,9 +213,9 @@ class DeploymentTest(unittest.TestCase):
                           'HEADLAMP_HOST=https://etch.example.test']:
                 path.write_text('HEADLAMP_REGISTRY=mirror.test\n' + extra)
                 with self.assertRaises(ValueError):
-                    manage.settings(path)
+                    manage.settings(manage.read_env(path))
             path.write_text('HEADLAMP_REGISTRY=mirror.test' + OIDC_ENV)
-            values = manage.settings(path)
+            values = manage.settings(manage.read_env(path))
             self.assertEqual(values['config']['baseURL'], '')
             self.assertEqual(values['ingress']['tls'], [])
 
@@ -269,21 +269,35 @@ class DeploymentTest(unittest.TestCase):
 class FakeAdmin:
     """등록 여부에 따라 관리 API 응답을 흉내 낸다."""
 
-    def __init__(self, client=False, group=False, users=('alice',)):
-        self.client, self.group, self.users, self.calls = client, group, users, []
+    def __init__(self, client=None, group=False, users=('alice',)):
+        self.client, self.group, self.users, self.calls = copy.deepcopy(client), group, users, []
+        if self.client:
+            self.client['protocolMappers'][0].setdefault('id', 'mapper-id')
+        self.writes = []
 
     def call(self, method, path, data=None, query=None):
         self.calls.append((method, path))
+        if method != 'GET':
+            self.writes.append((method, path, data))
         if (method, path) == ('GET', 'clients'):
-            return [{'id': 'cid'}] if self.client else []
+            return [{'id': 'cid', 'clientId': self.client['clientId']}] if self.client else []
         if (method, path) == ('POST', 'clients'):
-            self.client = True
+            self.client = copy.deepcopy(data)
+        if (method, path) == ('GET', 'clients/cid'):
+            return self.client
+        if (method, path) == ('GET', 'clients/cid/default-client-scopes'):
+            return [{'name': name} for name in self.client['defaultClientScopes']]
+        if (method, path) == ('GET', 'client-scopes'):
+            return [{'id': name, 'name': name} for name in ('profile', 'email')]
+        if (method, path) == ('GET', 'clients/cid/protocol-mappers/models'):
+            return self.client['protocolMappers']
         if (method, path) == ('GET', 'groups'):
-            return [{'id': 'gid', 'name': 'headlamp-admins'}] if self.group else []
+            groups = [{'id': 'nested', 'path': '/other/headlamp-admins'}]
+            return groups + ([{'id': 'gid', 'path': '/headlamp-admins'}] if self.group else [])
         if (method, path) == ('POST', 'groups'):
             self.group = True
         if (method, path) == ('GET', 'users'):
-            return [{'id': 'uid'}] if query['username'] in self.users else []
+            return [{'id': 'uid', 'username': query['username']}] if query['username'] in self.users else []
         if path == 'clients/cid/client-secret':
             return {'value': 'generated-secret'}
         return None
@@ -291,7 +305,8 @@ class FakeAdmin:
 
 class OidcSetupTest(unittest.TestCase):
     def setUp(self):
-        self.values = manage.settings(manage.APP / 'env/k8s.env')
+        self.values = manage.settings(manage.read_env(manage.APP / 'env/k8s.env'))
+        self.client = manage.oidc_client(self.values)
 
     def test_registers_missing_client_and_group_and_joins_admins(self):
         admin = FakeAdmin()
@@ -301,13 +316,43 @@ class OidcSetupTest(unittest.TestCase):
         self.assertIn(('PUT', 'users/uid/groups/gid'), admin.calls)
 
     def test_existing_client_and_group_are_not_modified(self):
-        admin = FakeAdmin(client=True, group=True)
+        admin = FakeAdmin(client=self.client, group=True)
         manage.register_client(admin, self.values)
-        self.assertFalse(any(method in ('POST', 'PUT', 'DELETE') for method, _ in admin.calls))
+        self.assertEqual(admin.writes, [])
 
-    def test_unknown_admin_user_stops(self):
+    def test_existing_client_drift_is_repaired_without_overwriting_its_secret_or_other_mappers(self):
+        self.client['redirectUris'] = ['https://old.test/oidc-callback']
+        self.client['attributes']['extra'] = 'keep'
+        self.client['defaultClientScopes'] = ['profile', 'extra']
+        self.client['protocolMappers'][0]['id'] = 'mapper-id'
+        self.client['protocolMappers'][0]['config']['full.path'] = 'false'
+        self.client['protocolMappers'].append({'name': 'extra'})
+        admin = FakeAdmin(client=self.client, group=True)
+        self.assertEqual(manage.register_client(admin, self.values), 'generated-secret')
+        (_, _, client), scope, (_, mapper_path, mapper) = admin.writes
+        self.assertEqual(client['redirectUris'], manage.oidc_client(self.values)['redirectUris'])
+        self.assertEqual(client['attributes']['extra'], 'keep')
+        self.assertTrue({'secret', 'protocolMappers', 'defaultClientScopes'}.isdisjoint(client))
+        self.assertEqual(scope, ('PUT', 'clients/cid/default-client-scopes/email', None))
+        self.assertEqual(mapper_path, 'clients/cid/protocol-mappers/models/mapper-id')
+        self.assertEqual(mapper['config']['full.path'], 'true')
+
+    def test_unknown_admin_user_stops_before_any_write(self):
+        admin = FakeAdmin()
         with self.assertRaisesRegex(ValueError, 'bob'):
-            manage.register_client(FakeAdmin(client=True, group=True), self.values, ['bob'])
+            manage.register_client(admin, self.values, ['alice', 'bob'])
+        self.assertEqual(admin.writes, [])
+
+    def test_oidc_setup_reads_admins_from_deployment_env(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'headlamp.env'
+            path.write_text('HEADLAMP_REGISTRY=mirror.example.test' + OIDC_ENV +
+                            '\nHEADLAMP_ADMINS=alice, bob\n')
+            with patch.object(manage, 'oidc_setup') as setup, patch.dict(manage.os.environ, {}, clear=True), \
+                    patch('sys.argv', ['manage.py', 'oidc-setup', '--env', str(path), '--context', 'test']):
+                manage.main()
+            self.assertEqual(setup.call_args.args[3], ['alice', 'bob'])
+            self.assertNotIn('alice', json.dumps(setup.call_args.args[1]))
 
 
 if __name__ == '__main__':
