@@ -81,21 +81,53 @@ make ops-preflight APP=airflow KUBE_CONTEXT="<context>" AIRFLOW_ENV=/appdata/etc
 - 변수 이름은 [apps.json](../../apps.json)의 `inputs[].variable`이며 각 앱 가이드의 `입력` 표에도 있습니다. Portal은 `PROD_API_ENV_FILE`·`PROD_WEB_ENV_FILE`, 따로 반입한 Helm chart는 `<APP>_CHART_FILE`입니다.
 - 기존 DB에 연결할 때는 기존 credential과 맞춥니다. Keycloak 관리자·DB·사내 OIDC·Portal client 입력은 서로 다릅니다.
 
-### 공용 인증 입력 준비
+### 공용 운영 입력 준비
 
-프로젝트 루트의 Git 추적 파일 `identity.env`에는 `CORP_OIDC_CLIENT_ID`와 `IAM_PLATFORM_ADMIN_USERNAMES`를 `KEY=값` 형식으로 입력합니다. 관리자 목록은 기존 계정의 EPID를 쉼표로 구분해 적습니다. 이 키가 없으면 IAM 원본의 목록을 사용하고, 빈 값이면 새 관리자를 추가하지 않습니다.
-
-같은 폴더에 권한 `0600`으로 `identity.env.local`을 만들고 `CORP_OIDC_CLIENT_SECRET`을 입력합니다. 기존 외부 인증 env를 사용하는 환경은 `IDENTITY_ENV`에 파일 경로를 지정하며, 그 파일에는 세 키를 함께 둘 수 있습니다.
-
-[변경] 기존에 쓰던 두 앱 env를 원본으로 지정합니다. 이미 배포한 Keycloak에서는 현재 DB·관리자 값과 맞는 기존 env를 사용합니다. 둘 중 하나가 저장소 기본 env를 사용한다면 해당 인자를 생략합니다.
+[변경] 관리 호스트의 프로젝트 루트에 [identity.env.example](../../../../identity.env.example)을 복사합니다. 기존 파일이 있으면 유지합니다.
 
 ```bash
-make identity-env-prepare KEYCLOAK_ENV="<기존 Keycloak env 경로>" IAM_ENV="<기존 IAM env 경로>"
+test -e identity.env || install -m 0600 identity.env.example identity.env
+stat -c '%a %n' identity.env
 ```
 
-성공하면 `identity.env` 옆 `identity.env.generated/`에 권한 `0600`으로 두 파일을 만들고 `KEYCLOAK_ENV=…`와 `IAM_ENV=…` 경로를 출력합니다. `identity.env.local`과 생성 디렉터리는 Git에서 제외합니다. 실패하면 표시한 키의 입력과 파일 권한을 확인한 뒤 같은 명령을 다시 실행합니다.
+성공 표시는 `600 identity.env`입니다. Git에는 앱별 env의 초기값을 담은 예제를 포함합니다. 실행 계정이 소유한 로컬 파일에 외부 발급값과 기존 배포에서 확인한 운영값을 `KEY=값` 형식으로 적습니다. 기존 배포에서는 준비 명령 전에 예제 초기값을 현재 운영값과 대조합니다.
 
-Keycloak에는 생성한 `KEYCLOAK_ENV`를, Etch Members에는 생성한 두 경로를 검사·배포·대조 명령에 전달합니다. 앱 가이드의 명령에서 env 경로만 바꾸면 됩니다. 운영 입력이나 원본 env를 갱신한 뒤 다시 생성하며, 생성본은 배포 입력으로 사용합니다. 출력된 경로만 기록하고 값은 출력하지 않습니다.
+처음 적용할 때는 기존 운영 env를 원본으로 지정해 사용 중인 DB·계정·서명 키·스토리지 값을 가져옵니다. 선택 입력이 비어 있으면 원본 값이 적용됩니다. `IAM_PLATFORM_ADMIN_USERNAMES`의 빈 값은 새 관리자 추가를 생략합니다. Etch Members와 Headlamp 관리자 목록은 기존 Keycloak 계정의 EPID를 쉼표로 구분합니다. AD FS 발급값은 두 키를 함께 입력합니다. 예전 `identity.env.local`에 저장한 AD FS secret은 현재 사용값을 확인해 `identity.env`로 옮깁니다.
+
+CSV·CA·chart는 절대 경로 또는 `identity.env` 기준 상대 경로로 지정합니다. 공개 인증서·개인키는 [공용 TLS](../../../README.md#공용-tls-등록)의 파일 경로에 준비합니다. 기존 외부 공용 입력 파일은 `IDENTITY_ENV`로 지정합니다.
+
+[변경] 관리 호스트에서 루트 입력을 읽어 배포 인자를 준비합니다. 앱별 기존 운영 env가 있는 경우에만 그 경로를 Make 인자로 추가합니다. 예를 들어 Portal API 원본은 `PROD_API_ENV_FILE="<기존 파일>"`입니다.
+
+```bash
+make identity-env-prepare
+```
+
+성공하면 배포에 전달할 `변수=값` 인자를 출력합니다. 덮어쓴 값이 있는 앱 env와 입력한 계정 파일은 `identity.env.generated/`에 권한 `0600`으로 생성하고 원본 파일은 보존합니다. 출력에는 파일 경로와 공개 배포 인자만 나옵니다. 이 디렉터리는 Git에서 제외합니다. 실패하면 표시된 키 또는 경로를 확인한 뒤 같은 명령을 다시 실행합니다.
+
+| 대상 | 출력됐을 때 전달할 인자 |
+| --- | --- |
+| 공통·Traefik | `KUBE_CONTEXT`는 명시적으로 확인해 모든 명령에 사용. `VIP_BACKENDS`는 Traefik에 전달 |
+| Keycloak | `KEYCLOAK_ENV`, `KEYCLOAK_SDWTS_CSV`, `KEYCLOAK_USERS_CSV`, `KEYCLOAK_CA_FILE` |
+| Etch Members | `IAM_ENV`, `KEYCLOAK_ENV`, `REGISTRY_ENV`, `REGISTRY_PUSH_ENV`, `KEYCLOAK_CA_FILE` |
+| Headlamp | `HEADLAMP_ENV`, `KEYCLOAK_ENV`, `HEADLAMP_OIDC_CA_FILE`, `HEADLAMP_CHART_FILE`, `KEYCLOAK_CA_FILE` |
+| Airflow | `AIRFLOW_ENV`, `KEYCLOAK_ENV`, `REGISTRY_PUSH_ENV`, `AIRFLOW_OIDC_CA_FILE`, `AIRFLOW_CHART_FILE`, `AIRFLOW_TLS_SOURCE`, `KEYCLOAK_ADMIN_CA_BUNDLE` |
+| Portal | `PROD_API_ENV_FILE`, `PROD_WEB_ENV_FILE`, `REGISTRY_PUSH_ENV` |
+| MinIO | `MINIO_ENV` |
+| Zot | `REGISTRY_ENV`, `REGISTRY_PUSH_ENV` |
+| Monitoring | `MONITORING_ENV`, `MONITORING_GRAFANA_ENV`, `MONITORING_CHART_FILE` |
+| FTP | `FTP_ENV`, `FTP_CREDENTIAL_FILE`, `FTP_NODES` |
+
+출력된 인자를 해당 앱의 준비 검사·빌드·배포·대조에 같은 값으로 전달합니다. 출력되지 않은 인자는 기존에 사용하던 원본 경로나 앱 기본값을 사용합니다. 운영 입력이나 원본 env를 바꾸면 다시 준비합니다. `AIRFLOW_TRIGGER_TOKEN`을 바꾸면 같은 값이 Airflow와 Portal API에 생성되므로 두 앱에 반영해야 합니다. 최초 계정 생성, 인증정보 교체, 데이터 이전은 각 앱 가이드의 적용 절차를 따릅니다.
+
+#### 기존 운영값 옮기기
+
+운영값 이전을 요청받은 사내 agent는 지정된 Kubernetes context와 대상 앱의 현재 배포 입력을 확인합니다.
+
+1. [조회] 기존 외부 env와 계정 파일, 배포된 워크로드가 참조하는 Secret·ConfigMap, Keycloak 설정 등에서 예제 항목에 대응하는 원본을 확인합니다. Git의 기본값은 실제 사용 여부가 확인된 경우에 사용합니다.
+2. [변경] 빈 항목과 예제 초기값이 들어 있는 항목은 현재 값이 확인되면 로컬 `identity.env`에 기록합니다. 운영자가 이미 확인해서 입력한 값은 보존합니다. 비밀값은 담당 프로세스가 읽고 파일에 직접 쓰게 하며 명령 인자, 도구 출력, 대화, 작업 기록에 남기지 않습니다. 파일을 갱신할 때 소유자 전용 권한을 유지합니다.
+3. [검사] 위의 `make identity-env-prepare`로 파일과 생성 결과를 확인합니다. 변경한 키, 출처의 파일·리소스 이름, 미확인 키만 보고하면 이전 작업이 완료됩니다.
+
+소스 간 값이 다르거나 복원할 수 없는 값은 미확인으로 기록합니다. 예를 들어 Zot의 bcrypt htpasswd는 원본 push 계정 파일이나 발급처에서 비밀번호를 확인해야 합니다. 조회 권한이나 발급값이 필요한 경우 [운영 입력 파일](../infrastructure/access.md#운영-입력-파일)의 요청 경로를 사용합니다.
 
 ### VIP와 진입점
 

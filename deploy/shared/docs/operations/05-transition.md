@@ -44,7 +44,7 @@ kubectl --context "<context>" get configmaps -A -l deploy-record -o custom-colum
    kubectl --context "<context>" -n etch-sso get deployment traefik -o jsonpath='{.spec.replicas}{"\n"}{.spec.template.spec.containers[0].args}{"\n"}{.metadata.annotations.deploy\.tailwind\.local/vip-backends}{"\n"}'
    ```
 
-저장소 밖 env로 배포한 앱은 이 문서의 모든 `make` 명령에 같은 env 변수(예: `AIRFLOW_ENV=<경로>`)를 붙입니다. 변수 이름은 각 앱 가이드의 `입력` 표에 있습니다.
+[공용 운영 입력 준비](02-deploy.md#공용-운영-입력-준비)의 결과나 기존 외부 env로 배포한 앱은 이 문서의 모든 `make` 명령에 같은 env 변수(예: `AIRFLOW_ENV=<경로>`)를 붙입니다. 변수 이름은 각 앱 가이드의 `입력` 표에 있습니다.
 
 ## 1. 공용 Traefik 인수
 

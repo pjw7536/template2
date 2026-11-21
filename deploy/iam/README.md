@@ -66,7 +66,7 @@
 
 기존 IAM 설정용 env를 그대로 사용할 때는 두 스토리지 키를 추가합니다. 기본값과 다른 파일을 쓰면 검사·빌드·배포·렌더·대조에 같은 경로를 지정합니다. Keycloak 설정만 다루는 `iam-keycloak-setup`과 `iam-verify`를 배포와 같은 값으로 실행할 때는 별도 origin·realm 환경변수도 대조합니다.
 
-사내 SSO 발급값과 플랫폼 관리자 목록을 한 파일에서 관리한다면 [공용 인증 입력 준비](../shared/docs/operations/02-deploy.md#공용-인증-입력-준비)에서 생성한 `KEYCLOAK_ENV`와 `IAM_ENV`를 사용합니다.
+사내 SSO 발급값과 플랫폼 관리자 목록을 `identity.env`에서 관리할 때는 [공용 운영 입력 준비](../shared/docs/operations/02-deploy.md#공용-운영-입력-준비)가 출력한 `KEYCLOAK_ENV`, `IAM_ENV`와 선택 Zot 인자를 사용합니다.
 
 ## A. 최초 설치
 

@@ -63,7 +63,7 @@
 
 1. 기본 실행 위치는 관리 호스트의 저장소 루트입니다. 다른 노드나 외부 시스템(DNS·방화벽·LB·인증서 발급·AD FS·외부 DB)에서 하는 단계는 [접근 경로](shared/docs/infrastructure/access.md)의 해당 절에 적힌 방법으로 수행합니다.
 2. Kubernetes 명령에는 `KUBE_CONTEXT="<context>"` 또는 `--context "<context>"`를 붙입니다. `kubectl config use-context`를 쓰지 않습니다.
-3. 명령마다 새 셸이 열릴 수 있으므로 `export`한 변수에 의존하지 말고 값을 명령에 직접 씁니다. 저장소 밖 env를 쓰면 그 경로를 앱의 env 변수(예: `AIRFLOW_ENV=<경로>`)로 검사·배포·대조·진단의 각 명령에 같게 붙입니다. 변수 이름은 앱 가이드의 `입력` 표에 있습니다.
+3. [공용 운영 입력 준비](shared/docs/operations/02-deploy.md#공용-운영-입력-준비)의 출력이나 외부 env 경로는 검사·빌드·배포·대조·진단 명령마다 같은 인자로 붙입니다. 변수 이름은 앱 가이드의 `입력` 표에 있습니다.
 4. 처음 설치와 업데이트 모두 `make ops-deploy APP=<app> KUBE_CONTEXT="<context>"`가 기본입니다. 다음을 순서대로 수행합니다.
    - 준비 검사: 접속, 저장소 원본, 먼저 필요한 앱, 입력 파일, chart, 사내 CA 묶음, 빌드 도구, 공개 host의 공용 TLS와 DNS를 확인합니다. chart 받기·CA 묶음 만들기·빌드 도구 설치·공용 TLS 등록은 필요한 파일이 있으면 자동으로 실행합니다.
    - 배포 단계: [apps.json](shared/apps.json)의 `steps`. 검사(`<app>-check`)가 클러스터를 바꾸는 단계보다 먼저입니다.
@@ -116,6 +116,8 @@
 
 ## 모든 작업 공통 시작
 
+Git이 `identity.env`를 추적하던 checkout에 로컬 입력값이 있으면 [갱신 전 확인](shared/docs/operations/01-checkout.md#1-갱신-전-확인--관리-호스트)에 따라 먼저 보관합니다.
+
 1. [변경] 추적 파일의 변경을 확인한 뒤 checkout을 갱신합니다. pull에 실패하면 현재 checkout으로 진행하고 실패 이유와 관련 파일을 보고합니다.
    ```bash
    git status --short --untracked-files=no
@@ -124,7 +126,7 @@
    git log -1 --oneline
    ```
    대상 배포 경로(`deploy/<app>`)나 소스(`apps/<app>`)에 미커밋 변경이 있으면 그 앱은 멈추고 보고합니다.
-   Keycloak 또는 Etch Members 작업에서 프로젝트 루트에 `identity.env.local`이 있거나 외부 인증 입력을 지정받았다면 [공용 인증 입력 준비](shared/docs/operations/02-deploy.md#공용-인증-입력-준비)를 먼저 실행합니다. 생성한 경로를 이어지는 검사·전환·배포·대조에 전달합니다.
+   배포 입력은 [공용 운영 입력 준비](shared/docs/operations/02-deploy.md#공용-운영-입력-준비)로 준비합니다. 기존 앱 env 경로를 사용하는 환경이면 원본으로 지정합니다. 출력된 인자 중 앱에 해당하는 것을 이어지는 검사·전환·배포·대조에 전달합니다.
    갱신으로 commit이 바뀌었으면 [전환 런북](shared/docs/operations/05-transition.md)의 `적용 여부 확인`을 먼저 실행합니다.
 2. [조회] context와 노드를 확인합니다. 선택한 context 이름이 목록에 없거나 노드 조회가 실패하면 [Kubernetes API](shared/docs/infrastructure/access.md#kubernetes-api) 절로 확인합니다.
    ```bash

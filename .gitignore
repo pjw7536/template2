@@ -12,6 +12,7 @@
 !.yarn/releases
 !.yarn/versions
 .env
+/identity.env
 /identity.env.local
 /identity.env.generated/
 pm_spider/
