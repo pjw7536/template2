@@ -62,9 +62,9 @@ git rev-parse HEAD
 추적 파일 변경이 있으면 내용을 확인합니다. 다음 단계의 pull이 충돌로 실패하면 관련 파일을 보고합니다. 진행 내역이 공유 문서에 쌓여 있다면 필요에 따라 아래 운영 기록으로 옮길 수 있습니다.
 원격 저장소와 배포 브랜치가 [저장소 원본](../infrastructure/repositories.md#공통-주소와-경로-규칙)의 값과 맞는지 확인합니다.
 
-`identity.env`를 Git이 추적하던 checkout에서는 로컬에 입력한 값이 있다면 갱신 전에 보관합니다.
+`identity.env`에 서버별 입력값이 있다면 갱신 전에 보관합니다.
 
-[변경] 관리 호스트의 저장소 루트에서 이전 입력 파일을 소유자 전용으로 복사합니다.
+[변경] 관리 호스트의 저장소 루트에서 입력 파일을 소유자 전용으로 복사합니다.
 
 ```bash
 identity_backup=$(mktemp "$HOME/.identity.env.before-pull.XXXXXX") &&
@@ -72,7 +72,7 @@ identity_backup=$(mktemp "$HOME/.identity.env.before-pull.XXXXXX") &&
   stat -c '%a %n' "$identity_backup"
 ```
 
-출력의 `600`과 파일 경로를 확인합니다. 로컬 변경으로 pull이 멈추면 이 경로를 보관한 채 충돌 파일을 보고합니다. 갱신 후 루트 파일이 없어졌으면 [공용 운영 입력 준비](02-deploy.md#공용-운영-입력-준비)의 복사 단계에서 보관한 파일을 원본으로 사용합니다.
+출력의 `600`과 파일 경로를 확인합니다. 갱신 후 `identity.env`에 필요한 서버별 값이 있는지 보관본과 대조합니다. 로컬 변경으로 pull이 멈추면 보관본 경로와 충돌 파일을 보고합니다.
 
 ### 2. 갱신
 

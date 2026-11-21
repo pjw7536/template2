@@ -55,12 +55,6 @@ class IdentityEnvTests(unittest.TestCase):
         command = ['make', '-s', 'identity-env-prepare', f'KEYCLOAK_ENV={self.keycloak}', f'IAM_ENV={self.iam}']
         self.identity.chmod(0o644)
         generated = checkout / 'identity.env.generated'
-        result = subprocess.run(command, cwd=checkout, capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('0600', result.stderr)
-        self.assertFalse(generated.exists())
-
-        self.identity.chmod(0o600)
         result = subprocess.run(command, cwd=checkout, capture_output=True, text=True, check=True)
         self.assertEqual(result.stdout.splitlines(), [f'KEYCLOAK_ENV={generated / "keycloak.env"}',
                                                      f'IAM_ENV={generated / "iam.env"}'])
@@ -102,13 +96,8 @@ class IdentityEnvTests(unittest.TestCase):
         self.assertNotIn('new-airflow-secret', result.stdout)
 
     def test_root_lists_every_supported_input_and_routes_optional_values(self):
-        example = read_env(ROOT / 'identity.env.example')
-        self.assertEqual(example.keys(), INPUT_KEYS)
-        self.assertFalse(any(example[key] for key in (
-            'CORP_OIDC_CLIENT_ID', 'CORP_OIDC_CLIENT_SECRET',
-            'DJANGO_DB_HOST', 'DJANGO_DB_NAME', 'DJANGO_DB_USER', 'DJANGO_DB_PASSWORD',
-            'OPENWEBUI_API_TOKEN', 'MAIL_API_KEY', 'KNOX_MESSENGER_AUTHORIZATION', 'DRONE_JIRA_TOKEN',
-        )))
+        root_input = read_env(ROOT / 'identity.env')
+        self.assertEqual(root_input.keys(), INPUT_KEYS)
         apps = read_catalog()['apps']
         for variable, (app, _, overrides) in APP_OVERRIDES.items():
             with self.subTest(variable=variable):
@@ -143,7 +132,7 @@ class IdentityEnvTests(unittest.TestCase):
         self.assertEqual(read_env(arguments['IAM_ENV'])['IAM_PLATFORM_ADMIN_USERNAMES'], '')
         previous = [path.read_bytes() for path in arguments.values()]
         self.identity.write_text(required + 'UNSUPPORTED_INPUT=unexpected\n')
-        with self.assertRaisesRegex(ValueError, 'identity.env.example'):
+        with self.assertRaisesRegex(ValueError, r'루트 identity\.env'):
             prepare(self.identity, self.keycloak, self.iam)
         self.identity.write_text(required + 'REGISTRY_USER=publisher\n')
         with self.assertRaisesRegex(ValueError, 'REGISTRY_USER·REGISTRY_PASSWORD'):

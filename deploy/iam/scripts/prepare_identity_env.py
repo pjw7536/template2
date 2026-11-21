@@ -175,11 +175,12 @@ def read_env(path, *, private=False):
 def prepare(identity, keycloak_base, iam_base):
     """운영 입력으로 배포용 env와 기존 배포 명령에 전달할 인자를 준비합니다."""
     identity = identity.resolve()
-    if identity.is_relative_to(ROOT) and identity != ROOT / 'identity.env':
+    checkout_input = ROOT / 'identity.env'
+    if identity.is_relative_to(ROOT) and identity != checkout_input:
         raise ValueError('checkout 안의 운영 입력은 프로젝트 루트의 identity.env를 사용하세요.')
-    selected = read_env(identity, private=True)
+    selected = read_env(identity, private=identity != checkout_input)
     if set(selected) - INPUT_KEYS:
-        raise ValueError('identity.env.example에서 지원하는 키를 확인하세요.')
+        raise ValueError('저장소 루트 identity.env에서 지원하는 키를 확인하세요.')
     oidc = {key: selected.get(key, '') for key in OIDC_KEYS}
     if any(value.strip() for value in oidc.values()):
         for key, value in oidc.items():

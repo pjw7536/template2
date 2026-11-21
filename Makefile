@@ -78,7 +78,7 @@ IAM_BUILD_ENV ?= $(CURDIR)/deploy/iam/env/build.env
 IDENTITY_ENV ?= $(CURDIR)/identity.env
 .PHONY: identity-env-prepare iam-image iam-keycloak-setup iam-verify
 identity-env-prepare:
-	@test -f "$(IDENTITY_ENV)" || { echo 'identity.env.example을 권한 0600의 identity.env로 복사하거나 IDENTITY_ENV로 경로를 지정하세요.' >&2; exit 1; }
+	@test -f "$(IDENTITY_ENV)" || { echo '저장소 루트의 identity.env를 확인하거나 IDENTITY_ENV로 기존 입력 파일을 지정하세요.' >&2; exit 1; }
 	@python3 deploy/iam/scripts/prepare_identity_env.py --identity-env "$(IDENTITY_ENV)" --keycloak-base "$(KEYCLOAK_ENV)" --iam-base "$(IAM_ENV)"
 iam-image:
 	python3 deploy/iam/scripts/manage.py publish --build-env "$(IAM_BUILD_ENV)" --registry-env "$(REGISTRY_ENV)" --push-env "$(REGISTRY_PUSH_ENV)"

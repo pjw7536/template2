@@ -11,7 +11,7 @@ checkout·설정·인증서·kubeconfig·백업 보관 위치와 운영 책임�
 | 관리 호스트 저장소 (`khplanew01`, 10.172.40.117) | 저장소 전체를 git clone해 사용하고 `git pull --ff-only`로 갱신 | 사용자 확인: 전체 git clone. 실제 서버 경로는 미확인이며 [저장소 clone](../operations/01-checkout.md#2-처음-clone)의 `/appdata/etchax`는 안내·예시 |
 | 운영 agent 기록 | 관리 호스트에서 `ops`를 실행하는 계정의 `~/.local/state/tailwind/ops/` | `state.md`와 `progress.md`. 디렉터리 권한 `0700`. [운영 기록](../operations/01-checkout.md#운영-기록) |
 | 사내 ops 작업 루트·이미지 빌드 위치 | 위 관리 호스트 저장소와 같은 checkout | 사용자 확정: 전체 저장소를 그대로 사용. [운영 agent 작업 루트](../operations/01-checkout.md#운영-agent-작업-루트). 실제 서버 경로·빌드 도구 설치 여부 미확인 |
-| 공용 운영 입력 | 관리 호스트 checkout 루트의 로컬 `identity.env` | 권한 0600. [공용 운영 입력 준비](../operations/02-deploy.md#공용-운영-입력-준비). 실제 서버 파일 확인 필요 |
+| 공용 운영 입력 | 관리 호스트 checkout 루트의 Git 추적 파일 `identity.env` | [공용 운영 입력 준비](../operations/02-deploy.md#공용-운영-입력-준비). 실제 서버 파일 확인 필요 |
 | 관리 호스트 외부 앱 설정 | `/appdata/etchax-config/<app>/` | 안내·예시: [외부 env를 쓰는 경우](../operations/02-deploy.md#외부-env를-쓰는-경우). 앱 도구에 실제 외부 env 경로 명시. 실제 서버 경로 확인 필요 |
 | 앱별 기본 env·Secret 입력 | `deploy/<app>/env/`와 앱별 별도 입력 | [환경설정](../configuration/environment.md). 실제 사용 파일은 앱별 절차에서 확인 |
 | kubeconfig | 관리 호스트 배포 계정의 `$HOME/.kube/config`(CP1의 `/etc/kubernetes/admin.conf`를 복사, 권한 0600). Git에 넣지 않음 | 사용자 확정: 관리 호스트에서 admin kubeconfig 사용. 실제 파일 위치·계정은 서버 확인 필요 |
@@ -25,8 +25,8 @@ checkout·설정·인증서·kubeconfig·백업 보관 위치와 운영 책임�
 ## Worker 앱 데이터 경로와 이전
 
 Worker의 앱 소유 호스트 경로는 `/appdata/<app 또는 domain>` 아래로 통일하고, 컨테이너 내부 API 업무 파일은 `/data/<domain>` 계약을 유지합니다([배포 지침](../../../AGENTS.md#환경과-데이터-계약)).
-아래는 신규 설치의 기본 선언입니다. 실제 서버의 현재 경로·데이터 이전·적용 여부는 미확인이며,
-운영 env의 사용자 지정 경로가 우선합니다. 기존 경로는 이전이 완료될 때까지 유지합니다.
+아래는 신규 설치 기본값과 확인된 운영 경로입니다. 운영 env의 사용자 지정 경로가 우선합니다.
+기존 경로는 이전이 완료될 때까지 유지합니다.
 
 | 대상 | 호스트 기본값 | 설정 원본 |
 | --- | --- | --- |
@@ -34,8 +34,10 @@ Worker의 앱 소유 호스트 경로는 `/appdata/<app 또는 domain>` 아래�
 | FTP 수신 파일 | `/appdata/data_movement` | `deploy/ftp/k8s/stack.yaml`: `volumes[].hostPath.path` |
 | Airflow DB·로그·ODBC | `/appdata/airflow/postgres`, `/appdata/airflow/logs`, `/appdata/airflow/odbc` | `deploy/airflow/env/k8s.env`: `POSTGRES_HOST_PATH`, `LOGS_HOST_PATH`, `ODBC_HOST_PATH` |
 | Airflow DAG 공유 | `/appdata/airflow/dags` (저장소 선언, 서버 적용 미확인) | `deploy/airflow/env/k8s.env`의 `DAGS_HOST_PATH`, [공유 폴더 전환](../../../airflow/docs/04-operations.md#공유-폴더-전환) |
-| Monitoring | `/appdata/monitoring` 아래 `prometheus`, `alertmanager`, `grafana` | `deploy/monitoring/env/k8s.env`: `DATA_HOST_PATH`. `monitoring-up`의 Job이 없는 활성 서비스 폴더를 생성하고 신규 폴더에만 서비스별 소유권·0770 적용. 기존 PV 폴더 누락은 중단. 실제 서버 적용·폴더 생성 여부 미확인 |
+| Monitoring | `/appdata/monitoring` 아래 `prometheus`, `alertmanager`, `grafana` | `deploy/monitoring/env/k8s.env`의 `DATA_HOST_PATH`는 세 폴더의 공통 부모 경로입니다. `monitoring-up`의 Job은 새로 만드는 서비스 폴더에만 서비스별 소유권과 `0770` 권한을 적용합니다. 기존 PV의 폴더가 없으면 중단합니다. 세 PV의 노드·경로와 `Bound` 상태는 사용자 확인 |
 | Keycloak DB | `/appdata/keycloak-postgres` | `deploy/keycloak/k8s/server/stack.yaml`: `spec.local.path` |
+
+Monitoring의 `identity.env`에 `MONITORING_DATA_HOST_PATH`를 지정할 때는 세 서비스의 공통 부모 경로인 `/appdata/monitoring`을 사용합니다. 배포 도구가 각 PV 경로에 서비스 이름을 붙입니다.
 
 - Portal의 운영 업무 파일은 아직 `emptyDir`이며 영구 저장소로 전환되지 않았습니다. 운영 PVC를 준비할 때 노드의 업무 파일 경로를 위 기준에 맞추고 API의 `/data/<domain>`에 연결합니다.
 - FTP와 같은 파일을 읽는 앱은 같은 노드의 같은 데이터 또는 명시적으로 준비한 공유 저장소에 연결해야 합니다.

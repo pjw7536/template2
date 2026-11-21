@@ -116,7 +116,7 @@
 
 ## 모든 작업 공통 시작
 
-Git이 `identity.env`를 추적하던 checkout에 로컬 입력값이 있으면 [갱신 전 확인](shared/docs/operations/01-checkout.md#1-갱신-전-확인--관리-호스트)에 따라 먼저 보관합니다.
+checkout의 `identity.env`에 서버별 입력값이 있으면 [갱신 전 확인](shared/docs/operations/01-checkout.md#1-갱신-전-확인--관리-호스트)에 따라 먼저 보관합니다.
 
 1. [변경] 추적 파일의 변경을 확인한 뒤 checkout을 갱신합니다. pull에 실패하면 현재 checkout으로 진행하고 실패 이유와 관련 파일을 보고합니다.
    ```bash
