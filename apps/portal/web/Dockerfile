@@ -24,6 +24,8 @@ COPY . .
 RUN npm run build
 
 FROM ${NODE_BASE_IMAGE} AS runner
+LABEL org.opencontainers.image.title="Etch Portal Web" \
+      org.opencontainers.image.description="React web interface for Etch Portal and its operational dashboards."
 ARG ALPINE_REPOSITORY_MIRROR=
 ARG NPM_REGISTRY=
 ARG NPM_STRICT_SSL=true

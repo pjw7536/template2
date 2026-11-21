@@ -44,9 +44,9 @@
 | 사내 이미지 저장소(Zot) | `repository.samsungds.net/proxy-docker-ghcr.io/project-zot/zot-linux-amd64:v2.1.20` | `deploy/registry/env/k8s.env`: `REGISTRY_IMAGE` | 없음 |
 | 사내 이미지 저장소 폴더 준비 Job | `repository.samsungds.net/proxy-docker-registry-1.docker.io/library/busybox:1.37.0` | `deploy/registry/env/k8s.env`: `PREPARE_IMAGE` | 없음 |
 | metrics-server | `repository.samsungds.net/proxy-docker-registry.k8s.io/metrics-server/metrics-server:v0.9.0` | `deploy/shared/metrics-server/components.yaml` | 없음 |
-| Portal API·Web·migrate | 사내 빌드 registry의 `store.etch.samsungds.net/tailwind/api`·`tailwind/web` (저장소 선언) | `deploy/portal/k8s/overlays/prod/kustomization.yaml`, `deploy/portal/k8s/overlays/prod/migrate/kustomization.yaml`: `images` | `make portal-image`가 빌드·push. tag는 overlay의 `auto`를 소스 해시로 바꿈. 서버 빌드·push 미확인 |
+| Portal API·Web·migrate | 사내 Zot의 `portal-api`·`portal-web` | `deploy/portal/k8s/overlays/prod/kustomization.yaml`, `deploy/portal/k8s/overlays/prod/migrate/kustomization.yaml`: `images` | `make portal-image`가 빌드·push. tag는 overlay의 `auto`를 소스 해시로 바꿈. 서버 빌드·push 미확인 |
 | Portal 빌드 기반(관리 호스트에서 빌드) | Docker Hub 미러의 `library/python:3.12-bullseye`, `library/node:20-alpine`, Debian·PyPI·npm·Alpine 미러 | `deploy/portal/env/prod/build.env` | 빌드 시에만 사용. npm·Alpine 미러의 실제 제공 미확인 |
-| IAM 웹·업무 부하 API | 사내 Zot의 `tailwind/iam-web`, `tailwind/iam-api` | `deploy/iam/scripts/manage.py`가 `REGISTRY_HOST`에 소스 해시 tag를 붙임 | `make iam-image`가 빠진 tag를 빌드·push. 운영 push·pull 미확인 |
+| Etch Members 웹·업무 부하 API | 사내 Zot의 `iam-web`, `iam-api` | `deploy/iam/scripts/manage.py`가 `REGISTRY_HOST`에 소스 해시 tag를 붙임 | `make iam-image`가 빠진 tag를 빌드·push. 운영 push·pull 미확인 |
 | IAM 빌드 기반 | Docker Hub 미러의 `library/node:22-alpine`, `library/nginx:1.30-alpine`, `library/python:3.12-slim`, npm·PyPI 미러 | `deploy/iam/env/build.env` | 빌드 시에만 사용. 사내 미러 응답 미확인 |
 | Portal edge-nginx | `repository.samsungds.net/proxy-docker-registry-1.docker.io/nginx:1.27-alpine` | `deploy/portal/k8s/overlays/prod/kustomization.yaml`: `images`(base `nginx:1.27-alpine`의 이름만 변경) | 없음 |
 

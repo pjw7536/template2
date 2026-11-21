@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""권한관리 웹에 필요한 Keycloak 조직 역할·client·권한·카탈로그를 반영합니다."""
+"""Etch Members에 필요한 Keycloak 조직 역할·client·권한·카탈로그를 반영합니다."""
 
 from __future__ import annotations
 
@@ -13,13 +13,14 @@ from urllib.parse import urlsplit
 KEYCLOAK = Path(__file__).resolve().parents[2] / "keycloak"
 sys.path.insert(0, str(KEYCLOAK / "scripts"))
 from access_apply import Apply as AccessApply, load_catalog  # noqa: E402
-from init_sdwt import Admin, SetupError, one, segment  # noqa: E402
+from init_sdwt import Admin, SetupError, mapper_equal, one, segment, user_mapper  # noqa: E402
 from org_sync import OrgSync  # noqa: E402
 
 CLIENT_ID = "iam"
 GROUP_ADMINS = "platform-admins"
 ADMIN_ROLES = ("view-users", "query-users", "query-groups", "manage-users")
 DEFAULT_SCOPES = {"basic", "profile", "roles"}
+PROFILE_MAPPERS = (user_mapper("display_name"), user_mapper("loginid"))
 ORG_PERMISSION = "iam-org-client"
 ORG_POLICY = "iam-platform-admins"
 ORG_SCOPES = ["view", "manage", "map-roles", "map-roles-composite"]
@@ -48,7 +49,7 @@ def check_public_url(url: str) -> str:
 
 def client_definition(public_url: str) -> dict:
     return {
-        "clientId": CLIENT_ID, "name": "권한관리", "protocol": "openid-connect", "enabled": True,
+        "clientId": CLIENT_ID, "name": "Etch Members", "protocol": "openid-connect", "enabled": True,
         "publicClient": True, "standardFlowEnabled": True, "implicitFlowEnabled": False,
         "directAccessGrantsEnabled": False, "serviceAccountsEnabled": False, "fullScopeAllowed": False,
         "rootUrl": public_url, "baseUrl": "/", "redirectUris": [public_url + "/*"],
@@ -98,6 +99,7 @@ class Setup:
         self.current_client = None
         self.client_changed = False
         attached = set()
+        mappers = []
         if self.client is None:
             self.plan.append("client 'iam' 생성")
         else:
@@ -111,8 +113,15 @@ class Setup:
                        for key, value in self.definition["attributes"].items())
             )
             if self.client_changed:
-                self.plan.append("client 'iam'의 주소·흐름 갱신")
+                self.plan.append("client 'iam'의 표시 이름·주소·흐름 갱신")
             attached = {scope["name"] for scope in api.call("GET", path + "/default-client-scopes")}
+            mappers = api.call("GET", path + "/protocol-mappers/models")
+        self.profile_mappers = []
+        for desired in PROFILE_MAPPERS:
+            mapper = one(mappers, "name", desired["name"])
+            if mapper is None or not mapper_equal(mapper, desired):
+                self.profile_mappers.append((mapper, desired))
+                self.plan.append(f"client 'iam'의 {desired['name']} token mapper 반영")
         scopes = {scope["name"]: scope for scope in api.call("GET", "client-scopes")}
         missing = sorted(DEFAULT_SCOPES - scopes.keys())
         if missing:
@@ -215,6 +224,13 @@ class Setup:
         client = f"clients/{segment(self.client['id'])}"
         for scope in self.missing_scopes:
             api.call("PUT", f"{client}/default-client-scopes/{segment(scope['id'])}")
+        mapper_path = client + "/protocol-mappers/models"
+        for current, desired in self.profile_mappers:
+            if current is None:
+                api.call("POST", mapper_path, desired)
+            else:
+                config = {**(current.get("config") or {}), **desired["config"]}
+                api.call("PUT", f"{mapper_path}/{segment(current['id'])}", {**current, **desired, "config": config})
         roles = f"clients/{segment(self.rm['id'])}"
         if self.client_roles:
             api.call("POST", f"{client}/scope-mappings/{roles}", self.client_roles)
@@ -251,7 +267,7 @@ class Setup:
             definition = {
                 "name": ORG_PERMISSION, "resourceType": "Clients", "resources": [self.org["id"]],
                 "scopes": ORG_SCOPES, "policies": [self.policy["id"]], "decisionStrategy": "UNANIMOUS",
-                "logic": "POSITIVE", "description": "권한관리 웹: 소속별 역할 client만 관리",
+                "logic": "POSITIVE", "description": "Etch Members: 소속별 역할 client만 관리",
             }
             path = f"{base}/permission/scope"
             if self.permission is None:
@@ -338,7 +354,7 @@ def main() -> int:
         reconcile(Admin(realm), public_url, usernames, apps, "apply" if args.apply else "verify" if args.verify else "check")
         return 0
     except (SetupError, OSError) as exc:
-        print(f"권한관리 Keycloak 설정 실패: {exc}", file=sys.stderr)
+        print(f"Etch Members Keycloak 설정 실패: {exc}", file=sys.stderr)
         return 1
 
 

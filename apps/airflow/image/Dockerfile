@@ -1,6 +1,8 @@
 # 먼저 저장소 apps/airflow/image/Dockerfile.dependencies로 사내 의존성 이미지를 빌드한다.
 ARG AIRFLOW_DEPENDENCY_IMAGE=apache/airflow:3.3.2-python3.12
 FROM ${AIRFLOW_DEPENDENCY_IMAGE}
+LABEL org.opencontainers.image.title="Etch Airflow" \
+      org.opencontainers.image.description="Apache Airflow runtime with Etch plugins and Keycloak sign-in. DAG files are deployed separately."
 # DAG는 이미지에 넣지 않는다. 배포가 Worker의 DAG 폴더를 /opt/airflow/dags에 읽기 전용으로 연결한다.
 COPY --chown=airflow:0 plugins/ /opt/airflow/plugins/
 COPY --chown=airflow:0 image/bootstrap-user.py /opt/airflow/bootstrap-user.py

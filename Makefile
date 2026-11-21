@@ -75,7 +75,11 @@ local-keycloak-dummy:
 # IAM의 이미지와 Keycloak 설정을 개별 실행합니다.
 IAM_ENV ?= $(CURDIR)/deploy/iam/env/prod.env
 IAM_BUILD_ENV ?= $(CURDIR)/deploy/iam/env/build.env
-.PHONY: iam-image iam-keycloak-setup iam-verify
+IDENTITY_ENV ?=
+.PHONY: identity-env-prepare iam-image iam-keycloak-setup iam-verify
+identity-env-prepare:
+	@test -n "$(IDENTITY_ENV)" || { echo 'IDENTITY_ENV에 운영 입력 파일 경로를 지정하세요.' >&2; exit 1; }
+	@python3 deploy/iam/scripts/prepare_identity_env.py --identity-env "$(IDENTITY_ENV)" --keycloak-base "$(KEYCLOAK_ENV)" --iam-base "$(IAM_ENV)"
 iam-image:
 	python3 deploy/iam/scripts/manage.py publish --build-env "$(IAM_BUILD_ENV)" --registry-env "$(REGISTRY_ENV)" --push-env "$(REGISTRY_PUSH_ENV)"
 iam-keycloak-setup:

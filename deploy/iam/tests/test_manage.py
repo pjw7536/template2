@@ -13,7 +13,7 @@ import manage  # noqa: E402
 class DeploymentTests(unittest.TestCase):
     def setUp(self):
         self.settings = manage.iam_settings(manage.APP / "env/prod.env")
-        self.images = {"api": "zot.test/tailwind/iam-api:tag", "web": "zot.test/tailwind/iam-web:tag"}
+        self.images = {"api": "zot.test/iam-api:tag", "web": "zot.test/iam-web:tag"}
         self.items = manage.manifests(self.settings, "https://sso.test", "fixture CA", self.images)
         self.volume = next(item for item in self.items if item["kind"] == "PersistentVolume")
         self.claim = next(item for item in self.items if item["kind"] == "PersistentVolumeClaim")

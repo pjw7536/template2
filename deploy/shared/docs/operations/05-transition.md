@@ -23,6 +23,7 @@ kubectl --context "<context>" get configmaps -A -l deploy-record -o custom-colum
 | [4. 초기 계정 값 확인](#4-초기-계정-값-확인) | 기존 설치의 실제 계정과 연결에 쓰는 env 또는 계정 파일이 맞는지 확인해야 하는 경우 |
 | [5. Airflow 이미지에서 DAG 분리](#5-airflow-이미지에서-dag-분리) | 기존 Airflow 설치에 새 이미지나 DAG 폴더를 적용할 경우 |
 | [6. Keycloak과 IAM 설정 확인](#6-keycloak과-iam-설정-확인) | 기존 realm·Headlamp client 또는 IAM 설정을 배포 정의와 맞출 경우 |
+| [7. Zot 이미지 경로 확인](#7-zot-이미지-경로-확인) | Portal 또는 Etch Members의 기존 이미지 경로를 전환할 경우 |
 
 `deploy-record-ingress`는 공용 Traefik 인수 여부를 확인하는 데 사용합니다. 다른 작업은 해당 앱의 배포 기록과 실제 상태로 확인합니다. 적용할 항목이 있으면 시작 전 검사 후 해당 절의 순서대로 진행합니다. Airflow 갱신이 필요하면 [DAG 분리 절차](#5-airflow-이미지에서-dag-분리)에서 기존 DAG 위치를 먼저 확인합니다.
 
@@ -183,11 +184,24 @@ DAG·테스트만 바뀐 커밋은 이미지 tag가 같으므로 `make airflow-c
    print("registrationEmailAsUsername:", api.call("GET")["registrationEmailAsUsername"])
    profile = api.call("GET", "users/profile")
    print("original_deptname:", any(field["name"] == "original_deptname" for field in profile["attributes"]))
+   print("profileLabelsMatch:", all(field["name"] == field.get("displayName") for field in profile["attributes"]))
    '
    ```
-   기대 결과는 `registrationEmailAsUsername: False`와 `original_deptname: True`입니다. 차이가 있으면 [변경] [Keycloak 업데이트](../../../keycloak/README.md#b-업데이트)를 실행한 뒤 위 조회를 반복합니다.
+   기대 결과는 `registrationEmailAsUsername: False`, `original_deptname: True`, `profileLabelsMatch: True`입니다. username 정책에 차이가 있으면 [변경] [Keycloak 업데이트](../../../keycloak/README.md#b-업데이트)를 실행합니다. 프로필 필드나 라벨만 다르면 [변경] [User Profile 단계](../../../keycloak/docs/02-configure.md#설정-단계와-job)를 실행합니다. 적용 후 위 조회를 반복합니다.
 2. Headlamp가 설치된 환경은 [조회] [기존 client 대조](../../../headlamp/docs/02-authentication.md#2-기존-client-대조)로 redirect·PKCE·그룹 mapper를 확인합니다. 차이나 승인된 신규 관리자가 있으면 [변경] [Headlamp 업데이트](../../../headlamp/README.md#b-업데이트)를 수행한 뒤 [배포 후 확인](../../../headlamp/README.md#c-배포-후-확인)을 실행합니다.
 3. [조회] 이전 IAM 설정만 반영했으면 `kubectl --context "<context>" -n iam get deployment,pvc,ingress`로 웹·API·SQLite PVC의 존재 여부를 확인합니다. 기존의 저장소 밖 IAM env에 `IAM_STORAGE_NODE`와 `IAM_DATA_HOST_PATH`가 없으면 [IAM 입력](../../../iam/README.md#입력)의 키를 추가합니다. [변경] 워크로드가 없으면 [IAM 최초 설치](../../../iam/README.md#a-최초-설치), 이미 있으면 [IAM 업데이트](../../../iam/README.md#b-업데이트)를 시행합니다. 공개 주소는 [서비스 접속 주소](../infrastructure/services.md#서비스-접속-주소)와 대조하고 [배포 후 확인](../../../iam/README.md#c-배포-후-확인)을 반복합니다.
+   [조회] 이미 배포된 Etch Members는 `iam-verify`로 client 표시 이름과 `display_name`·`loginid` mapper를 확인합니다. 차이가 있으면 [변경] [IAM 업데이트](../../../iam/README.md#b-업데이트)의 앱 배포 절차를 사용해 client 설정과 웹을 함께 반영합니다.
+
+## 7. Zot 이미지 경로 확인
+
+[조회] 설치한 앱의 Deployment 이미지를 조회합니다.
+
+```bash
+kubectl --context "<context>" -n tailwind-internal get deployments api web -o 'custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[*].image'
+kubectl --context "<context>" -n iam get deployments iam-api iam-web -o 'custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[*].image'
+```
+
+현재 이미지가 Zot의 `portal-api`, `portal-web`, `iam-api`, `iam-web`이면 적용된 상태입니다. [변경] 이전 경로를 쓰는 앱은 [Portal 업데이트](../../../portal/README.md#b-업데이트) 또는 [Etch Members 업데이트](../../../iam/README.md#b-업데이트)를 실행합니다. 배포 명령은 새 경로에 먼저 이미지를 게시하며 이후 rollout과 smoke를 확인합니다. 기존 Zot 이미지는 이전 버전 참조에 사용할 수 있습니다.
 
 ## 완료 확인
 

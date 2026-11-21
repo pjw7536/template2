@@ -856,7 +856,7 @@ class PortalImageTests(unittest.TestCase):
         spec.loader.exec_module(self.image)
 
     def test_builds_and_pushes_only_images_missing_from_registry(self):
-        images = {('api', 'api'): 'store.test/tailwind/api:t1', ('web', 'web'): 'store.test/tailwind/web:t2'}
+        images = {('api', 'api'): 'store.test/portal-api:t1', ('web', 'web'): 'store.test/portal-web:t2'}
         calls, built = [], []
         registry = self.image.image_registry
         with patch.object(self.image.up, 'rendered_images', return_value=images), \
@@ -865,7 +865,7 @@ class PortalImageTests(unittest.TestCase):
                 patch.object(registry, 'build', side_effect=lambda run, command, ref, source, **kw: built.append((ref, source, kw['build_args']))), \
                 patch.object(registry, 'push', side_effect=lambda run, command, ref, account: calls.append(ref)):
             self.image.publish('ctx', Path('/push.env'))
-        self.assertEqual(calls, ['store.test/tailwind/web:t2'])
+        self.assertEqual(calls, ['store.test/portal-web:t2'])
         reference, source, args = built[0]
         self.assertEqual(source, ROOT / 'apps/portal/web')
         # Web Dockerfile이 선언한 ARG만 전달한다.

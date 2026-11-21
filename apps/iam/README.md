@@ -1,4 +1,4 @@
-# 권한관리 웹(IAM)
+# Etch Members
 
 Keycloak의 소속(팀·라인·SDWT), 소속별 역할, 앱 역할을 관리하는 React 정적 웹입니다.
 조직과 권한은 로그인한 플랫폼 관리자의 토큰으로 Keycloak Admin API를 직접 호출해 관리합니다. 업무 부하 탭은 별도의 IAM API와 SQLite 저장소를 사용합니다.
@@ -75,7 +75,7 @@ Keycloak의 소속(팀·라인·SDWT), 소속별 역할, 앱 역할을 관리하
 ## 사용 조건
 
 - [IAM 배포](../../deploy/iam/README.md)는 `iam` client, `/iam/platform-admins` 그룹, `org` client·관리 권한과 앱 역할 카탈로그를 반영합니다. 웹은 `/iam` 속성의 카탈로그에서 앱 열과 `org` client id를 읽습니다.
-- `/iam/platform-admins`에 가입한 사용자만 사용할 수 있습니다. 기존 사용자를 추가하려면 배포 입력의 `IAM_PLATFORM_ADMIN_USERNAMES`에 정확한 username을 지정합니다.
+- `iam` 액세스 토큰에 `realm-management/manage-users` 역할이 있어야 사용할 수 있습니다. 운영 담당자는 [IAM 배포 입력](../../deploy/iam/README.md#입력)에 승인된 계정의 EPID를 지정해 `/iam/platform-admins`에 추가합니다. 반영 후 로그아웃하고 다시 로그인합니다.
 - 사용자는 사내 로그인을 한 번 이상 해야 Keycloak에 존재하므로 검색·업로드 대상이 됩니다.
 
 ## 권한 모델
@@ -121,13 +121,13 @@ SDWT S의 데이터            : min(앱 역할, org_roles 중 sdwt:S:<등급>�
 
 1. 앱 배포에서 Keycloak 로그인 client를 만듭니다. 토큰에 자기 역할만 들어가도록 `fullScopeAllowed=false`로 둡니다.
 2. [카탈로그](../../deploy/keycloak/access/catalog.json)에 앱을 추가하고 [IAM 업데이트](../../deploy/iam/README.md#b-업데이트)를 실행합니다.
-   역할·기본 역할이 만들어지고, 앱 client에 `affiliation`·`org_roles` scope가 연결되며, 권한관리 웹 매트릭스에 열이 바로 나타납니다(웹 재배포 불필요).
+   역할·기본 역할이 만들어지고, 앱 client에 `affiliation`·`org_roles` scope가 연결되며, Etch Members 매트릭스에 열이 바로 나타납니다(웹 재배포 불필요).
 3. 앱은 `resource_access.<clientId>.roles`와 `org_roles`로 위 규칙대로 판단합니다.
 
 ### 소속과 역할 변경 규칙
 
 - 소속 변경: 이전 `/org` SDWT 그룹에서 빠지고 새 SDWT 그룹에 들어가며 `user_sdwt_prod`·`line_id` 속성이 바뀝니다. 소속별 역할은 그대로입니다.
-- 팀은 사내 부서(`deptname`)와 같은 값입니다. `deptname`은 사내 로그인 때 인사 값으로 맞춰지므로 권한관리 웹은 쓰지 않고, 고른 SDWT의 팀이 사내 부서와 다르면 경고합니다.
+- 팀은 사내 부서(`deptname`)와 같은 값입니다. `deptname`은 사내 로그인 때 인사 값으로 맞춰지며, Etch Members는 고른 SDWT의 팀이 사내 부서와 다르면 경고합니다.
 - SDWT 추가: 팀·라인·SDWT 그룹, `sdwt:<SDWT>:<등급>` 역할 3개, 라인·팀 역할과 토큰 묶음 `org-all` 포함, SDWT 그룹의 `sdwt:<SDWT>:user` 연결을 한 번에 만듭니다(`make keycloak-org-sync`와 같은 결과).
 - 라인 이동: SDWT 역할을 이전 라인 역할에서 빼고 새 라인 역할에 넣으며, 소속 구성원의 `line_id`를 바꿉니다.
 - 이름에 `/`·`:`는 쓸 수 없습니다(`:`는 역할 이름 구분자). 같은 라인 이름이 여러 팀에 있을 수 있어 라인은 항상 `팀/라인`으로 구분하고, SDWT 이름은 전체에서 유일합니다.
@@ -154,6 +154,8 @@ SDWT S의 데이터            : min(앱 역할, org_roles 중 sdwt:S:<등급>�
 
 런타임 설정은 `public/config.js`의 `window.__IAM_CONFIG__`(`keycloakUrl`, `realm`, `clientId`)입니다.
 개발 기본값은 `http://localhost:8180`, realm `portal`, client `iam`입니다. 운영 배포는 IAM·Keycloak env의 공개 설정을 `config.js` ConfigMap으로 만들어 웹 컨테이너에 마운트합니다.
+
+상단에는 ID 토큰의 `display_name`과 `loginid`를 `이름(로그인 ID)` 형식으로 표시합니다. 하나만 있으면 있는 값만 표시합니다. 권한 탭과 구성원 상세에서는 이름, 로그인 ID, EPID를 각각의 필드로 구분합니다.
 
 ## 업무 부하
 

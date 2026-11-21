@@ -12,7 +12,7 @@ Portal(API·Web·edge-nginx)을 설치·운영하는 문서입니다. 단계 표
 | namespace | `tailwind-internal` (Deployment `api`, `web`, `edge-nginx`) |
 | 공개 주소 | `https://etch.samsungds.net`, health `/api/v1/health/` |
 | 배포 명령 | `make ops-deploy APP=portal` = 준비 검사 → `portal-check` → `portal-image` → `keycloak-portal-client-setup` → `portal-up` → `portal-smoke` → 대조 |
-| 이미지 | `store.etch.samsungds.net/tailwind/api`·`web`, tag는 `apps/portal/api`·`web` 소스 해시. `portal-image`가 이 checkout에서 빌드해 push |
+| 이미지 | 사내 Zot의 `portal-api`·`portal-web`. tag는 `apps/portal/api`·`web` 소스 해시. `portal-image`가 이 checkout에서 빌드해 push |
 | `portal-up`이 하는 일 | namespace·Secret(`api-env`, `web-env`) 등록 → 필요하면 migration → 앱 적용 → 공용 Traefik 연결 → 배포 기록 |
 | 완료 기준 | `ops-deploy` 요약의 `failedStep` `null`·`driftResultCode` `0`, 세 Deployment Ready |
 | 먼저 필요한 것 | 공용 Traefik(ingress), Keycloak 설정 완료, MinIO, Registry, 외부 PostgreSQL(`pg_trgm`), 업무 도메인 공용 TLS, 빌드 도구 |

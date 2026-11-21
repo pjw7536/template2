@@ -1,8 +1,8 @@
-# 권한관리(IAM) 배포 가이드
+# Etch Members 배포 가이드
 
 [배포 가이드](../README.md) · [공통 절차](../shared/docs/README.md)
 
-관리 호스트의 저장소 루트에서 [권한관리 웹](../../apps/iam/README.md)과 업무 부하 API를 배포합니다. 명령의 단계 표시는 [배포 가이드](../README.md#문서-읽는-법)를 따릅니다.
+관리 호스트의 저장소 루트에서 [Etch Members](../../apps/iam/README.md) 웹과 업무 부하 API를 배포합니다. 명령의 단계 표시는 [배포 가이드](../README.md#문서-읽는-법)를 따릅니다.
 
 ## 한눈에 보기
 
@@ -18,8 +18,8 @@
 
 ## 구성
 
-- 웹: Zot의 `tailwind/iam-web` 이미지와 공용 Traefik으로 제공합니다. 런타임 `config.js`는 공개 Keycloak URL과 realm으로 만듭니다.
-- API: Zot의 `tailwind/iam-api` 이미지가 업무 부하의 WSGI 앱을 실행합니다. 웹이 같은 origin의 `/api/workload/` 요청을 내부 API Service로 전달합니다.
+- 웹: Zot의 `iam-web` 이미지와 공용 Traefik으로 제공합니다. 런타임 `config.js`는 공개 Keycloak URL과 realm으로 만듭니다.
+- API: Zot의 `iam-api` 이미지가 업무 부하의 WSGI 앱을 실행합니다. 웹이 같은 origin의 `/api/workload/` 요청을 내부 API Service로 전달합니다.
 - 데이터: 업무 부하 SQLite는 Worker의 로컬 디스크에 정적 Retain PV와 PVC로 보존합니다. API replica 한 개가 DB를 사용합니다. [앱 배치와 스토리지](../shared/docs/infrastructure/services.md#앱별-배치와-스토리지-선언)
 - 빌드: 이미지별 소스와 빌드 env 내용으로 tag를 정하고, Zot에 빠진 tag만 빌드해 push합니다. [이미지 빌드](../README.md#이미지-빌드-도구)
 
@@ -28,7 +28,7 @@
 | 대상 | 내용 |
 | --- | --- |
 | 조직 역할 | 기존 `/org` 트리에서 `org` client·소속 역할·`org-claims`를 구성 |
-| IAM client | public client `iam`, 표준 흐름·PKCE S256, 공개 주소에 대한 redirect·web origin, `fullScopeAllowed=false`와 필요한 관리 역할 매핑 |
+| IAM client | public client `iam`, 표시 이름 `Etch Members`, PKCE S256, redirect·web origin, `fullScopeAllowed=false`, 필요한 관리 역할과 `display_name`·`loginid` mapper |
 | 관리자 그룹과 정책 | `/iam/platform-admins`, `org` client에 한정한 세분화 관리 권한 v2, realm의 관리 이벤트 상세 기록 |
 | 앱 역할 카탈로그 | 이미 등록된 앱 client의 역할과 `/iam`의 `iam.catalog` 속성 |
 | 플랫폼 관리자 | `IAM_PLATFORM_ADMIN_USERNAMES`에 명시한 기존 사용자를 관리자 그룹에 추가 |
@@ -60,11 +60,13 @@
 | --- | --- |
 | `IAM_PUBLIC_URL` | IAM 웹을 서비스할 HTTPS 주소. 경로 없이 입력. 운영 기본값은 [prod.env](env/prod.env) |
 | `KEYCLOAK_TARGET_REALM` | 설정을 적용할 업무 realm. 기본 `etch` |
-| `IAM_PLATFORM_ADMIN_USERNAMES` | 추가할 기존 Keycloak username을 쉼표로 구분. 기존 그룹 가입은 유지하며 빈 값이면 추가하지 않음 |
+| `IAM_PLATFORM_ADMIN_USERNAMES` | 추가할 기존 계정의 Keycloak `username`(EPID)을 쉼표로 구분. 기존 그룹 가입은 유지하며 빈 값이면 추가하지 않음 |
 | `IAM_STORAGE_NODE` | 업무 부하 API와 정적 PV를 배치할 Worker의 `kubernetes.io/hostname` |
 | `IAM_DATA_HOST_PATH` | Worker의 SQLite 전용 저장 폴더. 기본 `/appdata/iam` |
 
 기존 IAM 설정용 env를 그대로 사용할 때는 두 스토리지 키를 추가합니다. 기본값과 다른 파일을 쓰면 검사·빌드·배포·렌더·대조에 같은 경로를 지정합니다. Keycloak 설정만 다루는 `iam-keycloak-setup`과 `iam-verify`를 배포와 같은 값으로 실행할 때는 별도 origin·realm 환경변수도 대조합니다.
+
+사내 SSO 발급값과 플랫폼 관리자 목록을 한 파일에서 관리한다면 [공용 인증 입력 준비](../shared/docs/operations/02-deploy.md#공용-인증-입력-준비)에서 생성한 `KEYCLOAK_ENV`와 `IAM_ENV`를 사용합니다.
 
 ## A. 최초 설치
 
@@ -85,7 +87,7 @@
 | 변경 | 실행 |
 | --- | --- |
 | 앱 코드·빌드 입력·워크로드 설정 | [변경] A의 검사·적용 절차를 다시 실행 |
-| 조직 역할·관리자 목록·앱 역할 카탈로그, 새 앱 client 등록 | [변경] `make iam-keycloak-setup IAM_KEYCLOAK_APPLY=1 IAM_ENV="<IAM env 경로>" KEYCLOAK_ENV="<Keycloak env 경로>"`. 성공은 `IAM Keycloak 설정 적용 완료.` |
+| 관리자 목록·IAM client 이름과 mapper·조직 역할·앱 역할 카탈로그 | [변경] `make iam-keycloak-setup IAM_KEYCLOAK_APPLY=1 IAM_ENV="<IAM env 경로>" KEYCLOAK_ENV="<Keycloak env 경로>"`. 성공은 `IAM Keycloak 설정 적용 완료.` |
 | 사용 중인 IAM 웹의 공개 주소 변경 | [승인] 새 주소와 영향받는 로그인 경로를 보여 준 뒤 A의 적용 명령으로 반영 |
 | 적용 상태만 조회 | [조회] C의 `iam-verify` 실행 |
 
@@ -99,7 +101,7 @@ make iam-smoke KUBE_CONTEXT="<context>" IAM_ENV="<IAM env 경로>"
 make iam-verify IAM_ENV="<IAM env 경로>" KEYCLOAK_ENV="<Keycloak env 경로>"
 ```
 
-두 Deployment가 `Available`, PVC가 `Bound`, smoke가 `smoke 통과: iam`을 출력해야 합니다. smoke는 Ingress부터 웹 프록시를 거쳐 업무 부하 API와 SQLite 상태를 확인합니다. `iam-verify`는 `계획: 변경 없음`, `IAM Keycloak 설정 검증 통과.`가 성공 기준입니다. [화면 기능 확인](../shared/docs/infrastructure/access.md#화면-기능-확인)의 방법으로 플랫폼 관리자의 로그인, 권한 화면과 업무 부하 월별 조회를 확인합니다.
+두 Deployment가 `Available`, PVC가 `Bound`, smoke가 `smoke 통과: iam`을 출력해야 합니다. smoke는 Ingress부터 웹 프록시를 거쳐 업무 부하 API와 SQLite 상태를 확인합니다. `iam-verify`는 `계획: 변경 없음`, `IAM Keycloak 설정 검증 통과.`가 성공 기준입니다. [화면 기능 확인](../shared/docs/infrastructure/access.md#화면-기능-확인)의 방법으로 플랫폼 관리자 로그인, 상단의 `이름(로그인 ID)`, 권한 화면과 업무 부하 월별 조회를 확인합니다.
 
 ## 문제 해결과 멈춤 조건
 
@@ -111,6 +113,7 @@ make iam-verify IAM_ENV="<IAM env 경로>" KEYCLOAK_ENV="<Keycloak env 경로>"
 | 공개 주소가 다른 Ingress에서 사용 중 | [조회] 해당 Ingress의 서비스 용도와 IAM 공개 주소를 확인 |
 | `Keycloak 연결 또는 응답 처리 실패`, HTTP 401·403 | [Keycloak 관리 API](../shared/docs/infrastructure/access.md#keycloak-관리-api)에서 배포에 쓴 env의 주소·DNS·CA·관리 권한 확인 |
 | `IAM_PLATFORM_ADMIN_USERNAMES의 기존 사용자` 조회 실패 | 업무 realm과 정확한 username 확인. 사내 로그인으로 처음 등록되는 사용자라면 먼저 로그인한 뒤 IAM 재실행 |
+| 로그인에 성공했지만 Etch Members 접근 불가 | 플랫폼 관리자 등록이 승인되면 해당 EPID를 `IAM_PLATFORM_ADMIN_USERNAMES`에 넣고 [업데이트](#b-업데이트)의 관리자 목록 반영 명령을 실행합니다. 설정 검증이 통과하면 로그아웃 후 다시 로그인합니다. 그룹에 이미 가입했다면 `iam` 액세스 토큰에 `realm-management/manage-users` 역할이 있는지 확인합니다 |
 | `Keycloak에서 세분화 관리 권한 v2를 지원해야 합니다`, `admin-permissions client가 없습니다` | Keycloak 버전과 지원 기능을 확인할 때까지 IAM 적용 중단 |
 | 기존 `iam` client가 public client가 아니거나 기존 권한의 유형이 다름 | 대상 realm과 객체를 확인할 때까지 중단 |
 
@@ -118,5 +121,5 @@ make iam-verify IAM_ENV="<IAM env 경로>" KEYCLOAK_ENV="<Keycloak env 경로>"
 
 | 문서 | 내용 |
 | --- | --- |
-| [권한관리 웹](../../apps/iam/README.md) | 화면 기능, 권한 모델, 개발 실행 |
+| [Etch Members](../../apps/iam/README.md) | 화면 기능, 권한 모델, 개발 실행 |
 | [Keycloak 설정](../keycloak/docs/02-configure.md) | 소속 트리 입력과 앱 역할 카탈로그 |

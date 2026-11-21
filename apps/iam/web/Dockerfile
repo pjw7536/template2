@@ -10,6 +10,8 @@ COPY . .
 RUN npm run build
 
 FROM ${NGINX_BASE_IMAGE}
+LABEL org.opencontainers.image.title="Etch Members Web" \
+      org.opencontainers.image.description="Etch Members web interface for organization, app access, affiliation imports, and workload reporting."
 COPY nginx.conf /etc/nginx/iam.conf
 COPY --from=build /app/dist/ /usr/share/nginx/html/
 USER 101:101

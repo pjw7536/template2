@@ -406,7 +406,7 @@ function OrgTree({ team, lines, members, editAction, selected, expanded, layout,
                                       )}>
                                       <button type="button" aria-haspopup="dialog"
                                         className="min-w-0 flex-1 truncate rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                        title={attr(user, "loginid") || user.username}
+                                        title={attr(user, "loginid")}
                                         onClick={(event) => onSelectPerson(user, sdwt, event)}>{displayName(user)}</button>
                                       <span className="max-w-14 shrink-0 truncate" title={attr(user, "job_title")}><Badge>{attr(user, "job_title") || "-"}</Badge></span>
                                     </MovableMember>
@@ -445,7 +445,7 @@ function NodeRepresentatives({ name, title, people, loading, error, onSelectPers
       {loading ? <span className="text-muted-foreground">불러오는 중…</span>
         : error ? <span className="text-muted-foreground">확인 불가</span>
         : holders.length ? holders.map(({ user, sdwt }) => (
-          <button key={user.id} type="button" aria-haspopup="dialog" title={`${displayName(user)} · ${attr(user, "loginid") || user.username}`}
+          <button key={user.id} type="button" aria-haspopup="dialog" title={[displayName(user), attr(user, "loginid")].filter(Boolean).join(" · ")}
             className="w-full truncate rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={(event) => onSelectPerson(user, sdwt, event)}>{displayName(user)}</button>
         )) : <span className="text-muted-foreground">미등록</span>}
@@ -583,7 +583,7 @@ function SdwtDetail({ sdwt, team, org, orgUuid, people, loading, error, editing,
         className="min-w-0 flex-1 truncate rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         title={entry.user.username} onClick={(event) => onSelectPerson(entry.user, sdwt, event)}>
         {displayName(entry.user)}
-        <span className="ml-1 text-xs text-muted-foreground">{attr(entry.user, "loginid") || entry.user.username}</span>
+        {attr(entry.user, "loginid") && <span className="ml-1 text-xs text-muted-foreground">{attr(entry.user, "loginid")}</span>}
       </button>
       <span className="w-12 shrink-0 truncate text-xs text-muted-foreground" title={attr(entry.user, "grdName")}>{attr(entry.user, "grdName") || "-"}</span>
       <span className="w-14 shrink-0 truncate text-xs" title={attr(entry.user, "job_title")}>{attr(entry.user, "job_title") || "-"}</span>

@@ -116,19 +116,19 @@ class PortalUpTests(unittest.TestCase):
         items = [{'kind': 'Deployment', 'metadata': {'name': name}, 'spec': {'template': {'spec': {
                      'initContainers': [{'name': 'wait', 'image': 'mirror/busybox:1'}],
                      'containers': [{'name': name, 'image': image}]}}}}
-                 for name, image in (('api', 'store.test/tailwind/api:auto'), ('web', 'store.test/tailwind/web:auto'),
-                                     ('edge-nginx', 'mirror/nginx:1.27-alpine'), ('pinned', 'store.test/tailwind/api:2.0'))]
+                 for name, image in (('api', 'store.test/portal-api:auto'), ('web', 'store.test/portal-web:auto'),
+                                     ('edge-nginx', 'mirror/nginx:1.27-alpine'), ('pinned', 'store.test/portal-api:2.0'))]
         with patch.object(portal.runtime, 'render_json', return_value=items), \
                 patch.object(portal.image_registry, 'source_tag', side_effect=lambda root, trees, files: 'tag-' + trees[0].rsplit('/', 1)[-1]):
             rendered = portal.render(['kubectl'], portal.OVERLAY)
         images = [item['spec']['template']['spec']['containers'][0]['image'] for item in rendered]
-        self.assertEqual(images, ['store.test/tailwind/api:tag-api', 'store.test/tailwind/web:tag-web',
-                                  'mirror/nginx:1.27-alpine', 'store.test/tailwind/api:2.0'])
+        self.assertEqual(images, ['store.test/portal-api:tag-api', 'store.test/portal-web:tag-web',
+                                  'mirror/nginx:1.27-alpine', 'store.test/portal-api:2.0'])
         with patch.object(portal.runtime, 'render_json', return_value=[items[0]]), \
                 patch.dict(portal.os.environ, {'PORTAL_IMAGE_TAG': 'release-7'}):
-            items[0]['spec']['template']['spec']['containers'][0]['image'] = 'store.test/tailwind/api:auto'
+            items[0]['spec']['template']['spec']['containers'][0]['image'] = 'store.test/portal-api:auto'
             self.assertEqual(portal.render(['kubectl'], portal.OVERLAY)[0]['spec']['template']['spec']['containers'][0]['image'],
-                             'store.test/tailwind/api:release-7')
+                             'store.test/portal-api:release-7')
 
     def test_failed_migration_reports_stopped_api_and_skips_apply(self):
         for phase in ('migrate', 'post-migration'):

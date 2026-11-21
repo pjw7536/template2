@@ -1,5 +1,7 @@
 ARG PYTHON_BASE_IMAGE=python:3.12-bullseye
 FROM ${PYTHON_BASE_IMAGE} AS base
+LABEL org.opencontainers.image.title="Etch Portal API" \
+      org.opencontainers.image.description="Django API and database migration image for Etch Portal."
 
 ARG APT_DEBIAN_REPOSITORY=
 ARG APT_DEBIAN_CODENAME=bullseye

@@ -133,12 +133,12 @@ class OpsCommandsTest(unittest.TestCase):
             elif "--dry-run=client" in args:
                 assert sys.stdin.read().strip().endswith("/migrate")
                 print(json.dumps({"kind": "Job", "metadata": {"name": "portal-migrate"}, "spec": {"template": {"spec": {
-                    "containers": [{"name": "migrate", "image": "store.test/tailwind/api:auto"}]}}}}))
+                    "containers": [{"name": "migrate", "image": "store.test/portal-api:auto"}]}}}}))
             elif "create" in args:
                 job = json.load(sys.stdin)
                 # overlay의 tag auto는 소스 내용으로 정한 tag로 바뀌어 생성된다.
                 image = job["spec"]["template"]["spec"]["containers"][0]["image"]
-                assert image.startswith("store.test/tailwind/api:") and not image.endswith(":auto"), image
+                assert image.startswith("store.test/portal-api:") and not image.endswith(":auto"), image
                 sys.exit(int(os.getenv("COLLISION", "0")))
             else:
                 assert "get" in args and "portal-migrate" in args

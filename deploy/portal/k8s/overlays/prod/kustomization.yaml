@@ -9,10 +9,10 @@ resources:
 # newTag auto는 배포 도구가 apps/portal 소스 내용으로 정한 tag로 바꿉니다. 고정하려면 실제 tag를 씁니다.
 images:
   - name: portal-api
-    newName: store.etch.samsungds.net/tailwind/api
+    newName: store.etch.samsungds.net/portal-api
     newTag: auto
   - name: portal-web
-    newName: store.etch.samsungds.net/tailwind/web
+    newName: store.etch.samsungds.net/portal-web
     newTag: auto
   # edge-nginx도 사내 Docker Hub 미러를 거치도록 이름만 바꾸고 base의 tag를 유지합니다.
   - name: nginx

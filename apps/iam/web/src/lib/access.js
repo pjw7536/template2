@@ -14,10 +14,10 @@ export const LEVEL_LABELS = { viewer: "조회", user: "일반", admin: "관리�
 
 /** 그룹 속성 조각을 순번대로 이어 카탈로그 JSON으로 읽습니다. */
 export function readCatalog(values) {
-  if (!values?.length) throw new Error("권한관리 카탈로그가 없습니다. make keycloak-access-apply로 먼저 반영하세요.")
+  if (!values?.length) throw new Error("Etch Members 카탈로그가 없습니다. make keycloak-access-apply로 먼저 반영하세요.")
   const text = [...values].sort().map((value) => value.slice(4)).join("")
   const catalog = JSON.parse(text)
-  if (!Array.isArray(catalog.apps)) throw new Error("권한관리 카탈로그 형식이 올바르지 않습니다.")
+  if (!Array.isArray(catalog.apps)) throw new Error("Etch Members 카탈로그 형식이 올바르지 않습니다.")
   return catalog
 }
 

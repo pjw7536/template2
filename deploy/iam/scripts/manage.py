@@ -74,7 +74,7 @@ def image_refs(build_env, registry_env):
     images = {}
     for component in COMPONENTS:
         tag = image_registry.source_tag(ROOT, [f"apps/iam/{component}"], [build_env])
-        images[component] = f"{host}/tailwind/iam-{component}:{tag}"
+        images[component] = f"{host}/iam-{component}:{tag}"
     return images
 
 

@@ -2,7 +2,7 @@
   "attributes": [
     {
       "name": "username",
-      "displayName": "userid",
+      "displayName": "username",
       "permissions": {
         "view": [
           "admin",
@@ -119,7 +119,7 @@
     },
     {
       "name": "display_name",
-      "displayName": "이름",
+      "displayName": "display_name",
       "permissions": {
         "view": [
           "admin",
@@ -176,7 +176,7 @@
     },
     {
       "name": "original_deptname",
-      "displayName": "원소속 부서",
+      "displayName": "original_deptname",
       "permissions": {
         "view": [
           "admin",
@@ -233,7 +233,7 @@
     },
     {
       "name": "job_title",
-      "displayName": "직책",
+      "displayName": "job_title",
       "permissions": {
         "view": [
           "admin",

@@ -21,6 +21,8 @@ const TAB_KEYS = TABS.map(([key]) => key)
 
 export default function App() {
   const allowed = canManageUsers()
+  const { display_name: displayName, loginid: loginId } = keycloak.idTokenParsed ?? {}
+  const profileLabel = displayName && loginId ? `${displayName}(${loginId})` : displayName || loginId
   const [tab, setTab] = useState(() => (TAB_KEYS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "permissions"))
   const [orgRoot, setOrgRoot] = useState(undefined)
   const [orgUuid, setOrgUuid] = useState("")
@@ -56,7 +58,7 @@ export default function App() {
     // 너비별 배치 변경 없이 데스크톱 배치를 유지합니다. 창이 좁으면 가로 스크롤됩니다.
     <div className="flex h-screen min-h-0 min-w-[1280px] flex-col bg-background">
       <header className="flex shrink-0 flex-wrap items-center gap-4 border-b px-6 py-3">
-        <h1 className="text-lg font-semibold tracking-tight">권한관리</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Etch Members</h1>
         <span className="text-xs text-muted-foreground">realm {realm}</span>
         {allowed ? (
           <nav className="flex gap-1" aria-label="화면">
@@ -76,13 +78,13 @@ export default function App() {
             ))}
           </nav>
         ) : null}
-        <span className="ml-auto text-sm text-muted-foreground">{keycloak.tokenParsed?.preferred_username}</span>
+        <span className="ml-auto text-sm text-muted-foreground">{profileLabel}</span>
         <Button variant="outline" size="sm" onClick={() => keycloak.logout({ redirectUri: location.origin })}>로그아웃</Button>
       </header>
       <main className="min-h-0 flex-1 overflow-auto px-6 py-4">
         {!allowed ? (
           <p role="alert" className="rounded-md border border-destructive/30 px-3 py-2 text-sm text-destructive">
-            권한관리 웹을 사용할 권한이 없습니다. Keycloak의 /iam/platform-admins 그룹에 가입한 뒤 다시 로그인하세요.
+            Etch Members를 사용할 권한이 없습니다. 운영 담당자에게 플랫폼 관리자 등록을 요청한 뒤 다시 로그인하세요.
           </p>
         ) : error ? (
           <p role="alert" className="rounded-md border border-destructive/30 px-3 py-2 text-sm text-destructive">{error}</p>

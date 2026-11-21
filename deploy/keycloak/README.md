@@ -51,6 +51,8 @@ DNS가 아직 없어도 배포는 진행합니다. smoke가 APP VIP로 서비스
 
 공용 Traefik의 배치(`VIP_BACKENDS`)는 Keycloak의 입력이 아니며 [ingress 가이드](../shared/ingress/README.md#입력)에서 다룹니다.
 
+사내 SSO 발급값과 Etch Members 관리자 목록을 `identity.env`에서 관리한다면 [공용 인증 입력 준비](../shared/docs/operations/02-deploy.md#공용-인증-입력-준비)에서 생성한 `KEYCLOAK_ENV`를 사용합니다.
+
 env 파일의 키입니다. 형식과 Discovery 해석은 [환경설정](docs/01-prepare.md#환경설정)에 있습니다.
 
 | 키 | 의미 |

@@ -236,10 +236,10 @@ make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="<SDWT CSV 절대 경로>" KEYCLOAK_U
 `/org` 아래 없는 팀·라인·SDWT 그룹을 생성하고, 이어서 [소속별 역할](#소속별-역할) 반영을 함께 실행합니다.
 이미 있는 그룹과 가입 관계는 바꾸지 않으므로 CSV에 행을 추가해 다시 실행하면 새 팀·라인·SDWT만 추가됩니다.
 사용자 CSV를 지정하면 EPID를 기본 username으로 등록하고, 소속 SDWT·line과 팀을 `deptname`으로 저장하며, `/org/<팀>/<라인>/<SDWT>`에 가입시킵니다. 사용자 CSV의 `deptname`은 SDWT의 팀과 같아야 합니다.
-관리자나 다른 SDWT 역할은 자동 부여하지 않으며 권한관리 웹에서 지정합니다.
+관리자나 다른 SDWT 역할은 자동 부여하지 않으며 Etch Members에서 지정합니다.
 
 실패: realm 기본 그룹에 의한 의도하지 않은 권한 부여, 중복 신원, 기존 그룹의 속성·역할 매핑이 발견되면 쓰기 전에 중단합니다.
-SDWT가 CSV와 다른 위치(다른 팀·라인)에 이미 있어도 중단합니다. 이 경우들은 [가이드의 멈춤 조건](../README.md#문제-해결과-멈춤-조건)이며 기존 그룹·사용자를 지우거나 옮기지 않습니다. SDWT의 위치를 바꾸는 방법은 권한관리 웹의 라인 이동이고, 옮긴 뒤 CSV를 같은 위치로 맞춥니다. 관리 화면에서 그룹을 직접 옮긴 realm은 `make keycloak-org-sync KEYCLOAK_ORG_APPLY=1`로 라인 역할을 맞춥니다. 사용자 등록 중 중단되면 완료된 행은 유지되므로 원인을 해결하고 재실행합니다.
+SDWT가 CSV와 다른 위치(다른 팀·라인)에 이미 있어도 중단합니다. 이 경우들은 [가이드의 멈춤 조건](../README.md#문제-해결과-멈춤-조건)이며 기존 그룹·사용자를 지우거나 옮기지 않습니다. SDWT의 위치를 바꾸는 방법은 Etch Members의 라인 이동이고, 옮긴 뒤 CSV를 같은 위치로 맞춥니다. 관리 화면에서 그룹을 직접 옮긴 realm은 `make keycloak-org-sync KEYCLOAK_ORG_APPLY=1`로 라인 역할을 맞춥니다. 사용자 등록 중 중단되면 완료된 행은 유지되므로 원인을 해결하고 재실행합니다.
 
 ### 4. 등록 확인
 
@@ -260,7 +260,7 @@ make keycloak-org-sync
 ## 소속별 역할
 
 소속 그룹 트리(`/org`)에 맞춰 SDWT별 등급 역할과 라인·팀 전체 역할, 토큰 claim(`affiliation`, `org_roles`)을 Keycloak에 맞춥니다.
-권한 모델과 앱의 판단 규칙은 [권한관리 웹 문서](../../../apps/iam/README.md#권한-모델)에 있습니다.
+권한 모델과 앱의 판단 규칙은 [Etch Members 문서](../../../apps/iam/README.md#권한-모델)에 있습니다.
 
 | 반영 대상 | 내용 |
 | --- | --- |
@@ -282,7 +282,7 @@ make keycloak-org-sync KEYCLOAK_ORG_APPLY=1
 ```
 
 성공: 다시 실행하면 `계획: 변경 없음`입니다. 라인·팀 역할의 하위 역할은 트리와 정확히 맞추므로 Admin Console에서 SDWT를 옮긴 뒤 실행하면 라인 역할도 바뀝니다.
-경고: 트리에 없는 `org` 역할(삭제된 SDWT 등)은 지우지 않고 경고만 출력합니다. 권한관리 웹의 SDWT 추가·라인 이동은 이 명령과 같은 결과를 바로 만듭니다.
+경고: 트리에 없는 `org` 역할(삭제된 SDWT 등)은 지우지 않고 경고만 출력합니다. Etch Members의 SDWT 추가·라인 이동은 이 명령과 같은 결과를 바로 만듭니다.
 
 ## 앱 연결
 
@@ -325,10 +325,10 @@ make keycloak-sdwt-init KEYCLOAK_SDWTS_CSV="<SDWT CSV 절대 경로>" KEYCLOAK_U
 `make ops-deploy APP=airflow`의 `airflow-keycloak-client` 단계가 기존 realm에 전용 `airflow` client를 등록하며 기본 조회는 정상 로그인한 모두에게 허용합니다.
 해당 client의 `User` 또는 `Admin`은 Airflow를 운영하는 사용자에게만 직접 부여합니다. Portal의 앱 역할·SDWT 그룹·조직 mapper는 Airflow 권한에 사용하지 않습니다.
 
-### 권한관리 웹
+### Etch Members
 
-라인·SDWT 추가, 사용자 소속 변경, 앱 역할 부여는 [권한관리 웹](../../../apps/iam/README.md)에서 할 수 있습니다.
-IAM의 Keycloak 설정과 앱 역할 카탈로그는 [권한관리(IAM) 배포](../../iam/README.md#a-최초-설치)가 적용합니다.
+라인·SDWT 추가, 사용자 소속 변경, 앱 역할 부여는 [Etch Members](../../../apps/iam/README.md)에서 할 수 있습니다.
+IAM의 Keycloak 설정과 앱 역할 카탈로그는 [Etch Members 배포](../../iam/README.md#a-최초-설치)가 적용합니다.
 
 ### 앱별 완료 기준
 
@@ -343,10 +343,10 @@ IAM의 Keycloak 설정과 앱 역할 카탈로그는 [권한관리(IAM) 배포](
 
 ## 앱 역할
 
-[카탈로그](../access/catalog.json)에 적은 앱·기능의 역할, 포함 관계, realm 기본 역할을 Keycloak에 맞추고 권한관리 웹용 카탈로그를 저장합니다.
-권한 모델과 앱의 판단 규칙은 [권한관리 웹 문서](../../../apps/iam/README.md#권한-모델)에 있습니다.
+[카탈로그](../access/catalog.json)에 적은 앱·기능의 역할, 포함 관계, realm 기본 역할을 Keycloak에 맞추고 Etch Members용 카탈로그를 저장합니다.
+권한 모델과 앱의 판단 규칙은 [Etch Members 문서](../../../apps/iam/README.md#권한-모델)에 있습니다.
 
-준비물은 대상 앱의 로그인 client(앱 배포에서 생성), `/iam` 그룹([권한관리(IAM) 가이드](../../iam/README.md#a-최초-설치)의 배포가 생성)이며 관리자 인증은 [관리자 인증 입력](#2-관리자-인증-입력)과 같습니다.
+준비물은 대상 앱의 로그인 client(앱 배포에서 생성), `/iam` 그룹([Etch Members 가이드](../../iam/README.md#a-최초-설치)의 배포가 생성)이며 관리자 인증은 [관리자 인증 입력](#2-관리자-인증-입력)과 같습니다.
 
 카탈로그 항목은 다음과 같습니다.
 
@@ -354,10 +354,10 @@ IAM의 Keycloak 설정과 앱 역할 카탈로그는 [권한관리(IAM) 배포](
 | --- | --- | --- |
 | 단일 앱 `{ "client", "name", "default" }` | `default`: `open`·`closed` | `viewer` ⊂ `user` ⊂ `admin` |
 | 기능이 여러 개인 앱 `{ "client", "name", "features": [...] }` | 기능마다 `key`·`name`·`default` | `<key>:viewer` ⊂ `<key>:user` ⊂ `<key>:admin`, 묶음 `all:viewer`·`all:user`·`all:admin` |
-| 그룹 앱 `{ "group", "name", "infra" }` | Kubernetes처럼 그룹만 읽는 앱 | 없음(권한관리 웹 열만 생성) |
+| 그룹 앱 `{ "group", "name", "infra" }` | Kubernetes처럼 그룹만 읽는 앱 | 없음(Etch Members 열만 생성) |
 
 `open`인 앱·기능의 `viewer`는 realm 기본 역할에 들어가 모든 사용자가 받습니다. `closed`로 바꾸면 기본 역할에서 뺍니다.
-SDWT별 데이터 범위는 앱 역할로 두지 않고 [소속별 역할](#소속별-역할)로 정합니다. 권한관리 웹이 쓰도록 `org` client id도 카탈로그에 함께 저장하므로 `make keycloak-org-sync`를 먼저 실행합니다.
+SDWT별 데이터 범위는 앱 역할로 두지 않고 [소속별 역할](#소속별-역할)로 정합니다. Etch Members이 쓰도록 `org` client id도 카탈로그에 함께 저장하므로 `make keycloak-org-sync`를 먼저 실행합니다.
 
 [검사] 서버 연결 없이 카탈로그만 검사합니다.
 
@@ -379,10 +379,10 @@ make keycloak-access-apply KEYCLOAK_ACCESS_APPLY=1
 
 realm은 `KEYCLOAK_TARGET_REALM`(기본 `etch`)으로 바꿉니다.
 
-성공: 계획 줄과 `적용 완료`가 출력되고, 다시 실행하면 `계획: 변경 없음`입니다. 권한관리 웹을 새로고침하면 매트릭스에 앱 열이 보입니다.
+성공: 계획 줄과 `적용 완료`가 출력되고, 다시 실행하면 `계획: 변경 없음`입니다. Etch Members를 새로고침하면 매트릭스에 앱 열이 보입니다.
 경고: 카탈로그에 없는 역할·포함 관계는 지우지 않고 `경고:` 줄만 출력합니다. 경고는 적용을 막지 않으며 경고 줄을 보고에 남깁니다.
 [승인] 앱이 새 역할로 전환된 뒤 이전 역할을 지우는 것은 되돌릴 수 없는 변경입니다. 삭제할 client와 역할 이름을 보여 주고 승인받은 뒤 [Keycloak 관리 API](../../shared/docs/infrastructure/access.md#keycloak-관리-api) 절의 방법으로 삭제하고, `make keycloak-access-apply`의 `경고:` 줄에서 그 역할이 사라졌는지 확인합니다.
-client가 없는 앱은 건너뛰며, `/iam` 그룹이 없으면 권한관리 웹용 카탈로그를 저장하지 않습니다.
+client가 없는 앱은 건너뛰며, `/iam` 그룹이 없으면 Etch Members용 카탈로그를 저장하지 않습니다.
 
 ## 사용자 필드와 claim
 
@@ -417,6 +417,7 @@ Keycloak 기본 `username`은 EPID(`userid`)이고, 사내 사람 이름 `userna
 ### User Profile 권한
 
 정의 원본은 [account-user-profile.json](../k8s/claims/account-user-profile.json)입니다.
+Keycloak User Profile의 표시 라벨은 `display_name`, `loginid`, `original_deptname`처럼 각 속성의 실제 키를 그대로 씁니다. 기존 realm에 라벨을 반영할 때는 [설정 단계의 User Profile 명령](#설정-단계와-job)을 사용합니다. Etch Members에는 이름 `display_name`과 로그인 ID `loginid`를 각각 발급합니다.
 프로필 필드는 본인·관리자가 조회하고 관리자만 편집합니다. 미정의 속성 정책은 `ADMIN_EDIT`입니다.
 비밀번호·권한·로그인 시각은 커스텀 프로필에 복제하지 않습니다.
 
@@ -433,8 +434,8 @@ EPID는 유일하고 변하지 않으며 재사용되지 않는 식별자여야 
 
 ### 소속과 권한
 
-- 소속: `user_sdwt_prod`는 실제 소속 SDWT, `line_id`는 해당 라인입니다. 관리자, 권한관리 웹 또는 최초 CSV 등록으로 채우며 사내 IdP에서 수신하지 않습니다. 팀은 사내 부서 `deptname`(IdP 수신)과 같은 값입니다. 권한 판단에는 쓰지 않습니다.
-- 소속 그룹: `/org/{팀}/{라인}/{SDWT}` 하나에 가입합니다. 속성과 그룹은 권한관리 웹의 소속 변경이 함께 바꾸며, 토큰에는 `affiliation: {team, line, sdwt}`로 나갑니다.
+- 소속: `user_sdwt_prod`는 실제 소속 SDWT, `line_id`는 해당 라인입니다. 관리자, Etch Members 또는 최초 CSV 등록으로 채우며 사내 IdP에서 수신하지 않습니다. 팀은 사내 부서 `deptname`(IdP 수신)과 같은 값입니다. 권한 판단에는 쓰지 않습니다.
+- 소속 그룹: `/org/{팀}/{라인}/{SDWT}` 하나에 가입합니다. 속성과 그룹은 Etch Members의 소속 변경이 함께 바꾸며, 토큰에는 `affiliation: {team, line, sdwt}`로 나갑니다.
 - 소속별 역할: client `org`의 `sdwt:{SDWT}:{등급}`, 라인 전체 `team:{팀}:line:{라인}:{등급}`, 팀 전체 `team:{팀}:{등급}`입니다. 등급은 `viewer`·`user`·`admin`입니다. 토큰에는 펼쳐진 목록 `org_roles`로 나갑니다. [소속별 역할](#소속별-역할)을 참고합니다.
 - 앱 기능 권한: 앱 client 역할로 관리합니다. [앱 역할](#앱-역할)을 참고합니다.
 

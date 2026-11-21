@@ -57,7 +57,7 @@ def render(kube, overlay):
         pod = item.get('spec', {}).get('template', {}).get('spec', {})
         for container in pod.get('initContainers', []) + pod.get('containers', []):
             repository, _, tag = container['image'].rpartition(':')
-            component = repository.rsplit('/', 1)[-1]
+            component = repository.rsplit('/', 1)[-1].removeprefix('portal-')
             if tag == AUTO_TAG and component in SOURCES:
                 container['image'] = f'{repository}:{image_tag(component)}'
     return items

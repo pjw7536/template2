@@ -1,5 +1,7 @@
 ARG PYTHON_BASE_IMAGE=python:3.12-slim
 FROM ${PYTHON_BASE_IMAGE}
+LABEL org.opencontainers.image.title="Etch Members Workload API" \
+      org.opencontainers.image.description="Etch Members API for monthly workload records, backed by SQLite and authenticated with Keycloak."
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_TRUSTED_HOST=
 WORKDIR /app

@@ -302,7 +302,7 @@ export default function PermissionsPage({ columns, org, orgUuid }) {
               <TableHeader>
                 <TableRow className="h-12 bg-muted hover:bg-muted">
                   <TableHead className="sticky left-0 z-40 w-44 min-w-44 max-w-44 bg-muted px-2 text-center text-xs font-medium text-muted-foreground shadow-[inset_0_-1px_0_var(--border)]">이름</TableHead>
-                  <TableHead className="sticky left-44 z-40 w-36 min-w-36 max-w-36 bg-muted px-2 text-center text-[11px] font-medium text-muted-foreground shadow-[inset_0_-1px_0_var(--border)]">사용자 ID (Knox ID)</TableHead>
+                  <TableHead className="sticky left-44 z-40 w-36 min-w-36 max-w-36 bg-muted px-2 text-center text-[11px] font-medium text-muted-foreground shadow-[inset_0_-1px_0_var(--border)]">로그인 ID</TableHead>
                   <TableHead className="sticky left-80 w-32 min-w-32 max-w-32 z-40 bg-muted px-2 text-center text-xs font-medium text-muted-foreground shadow-[inset_0_-1px_0_var(--border)]">팀(부서)</TableHead>
                   <TableHead className="sticky left-112 w-28 min-w-28 max-w-28 z-40 bg-muted px-2 text-center text-xs font-medium text-muted-foreground shadow-[inset_0_-1px_0_var(--border)]">라인</TableHead>
                   <TableHead className="sticky left-140 w-32 min-w-32 max-w-32 border-r z-40 bg-muted px-2 text-center text-xs font-medium text-muted-foreground shadow-[inset_0_-1px_0_var(--border)]">SDWT</TableHead>
@@ -333,7 +333,7 @@ export default function PermissionsPage({ columns, org, orgUuid }) {
                         </button>
                       </TableCell>
                       <TableCell className="sticky left-44 z-20 w-36 min-w-36 max-w-36 overflow-hidden bg-card px-2 py-2 text-center group-hover:bg-muted">
-                        <span className="block truncate text-sm" title={user.username}>{attr(user, "loginid") || user.username}</span>
+                        <span className="block truncate text-sm" title={attr(user, "loginid")}>{attr(user, "loginid") || "-"}</span>
                       </TableCell>
                       {[
                         ["deptname", "left-80 w-32 min-w-32 max-w-32"],

@@ -4,8 +4,7 @@ export const ORIGINAL_DEPARTMENT_MAX_LENGTH = 128
 
 export const attr = (user, name) => user?.attributes?.[name]?.[0] ?? ""
 
-export const displayName = (user) =>
-  attr(user, "display_name") || [user?.lastName, user?.firstName].filter(Boolean).join("") || user?.username || "-"
+export const displayName = (user) => attr(user, "display_name") || "-"
 
 /** 실제 소속 구성원을 사용자별로 한 번만 세고, 인사 직급별 인원을 집계합니다. */
 export function summarizeMembers(people) {

@@ -36,7 +36,7 @@
 | `scripts/admin_env.py` | 관리 API 도구에 env의 관리자 계정을 환경변수로 전달. `KEYCLOAK_ADMIN_URL`·`USERNAME`·`PASSWORD` 중 하나라도 직접 지정하면 전달하지 않음 |
 | `scripts/init_sdwt.py` | `/org` 소속 그룹·사용자 등록과 공통 scope 연결. 적용 시 `org_sync.py`도 실행 |
 | `scripts/org_sync.py` | `keycloak-org-sync`의 소속별 역할·라인/팀 묶음·`org-claims` scope 반영. [소속별 역할](02-configure.md#소속별-역할) |
-| `scripts/access_apply.py` | `keycloak-access-apply`의 앱 역할·기본 역할·권한관리 웹 카탈로그 반영 |
+| `scripts/access_apply.py` | `keycloak-access-apply`의 앱 역할·기본 역할·Etch Members 카탈로그 반영 |
 
 설정 Job은 선택한 context에 관리 ConfigMap `keycloak-claim-mapper`를 적용한 뒤 실행합니다.
 프로필 단계는 `KEYCLOAK_PROFILE_ONLY=true`, 수신 mapper 단계는 `KEYCLOAK_SKIP_PROFILE=true`로 같은 Job 원본을 구분합니다.

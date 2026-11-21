@@ -81,6 +81,20 @@ make ops-preflight APP=airflow KUBE_CONTEXT="<context>" AIRFLOW_ENV=/appdata/etc
 - 변수 이름은 [apps.json](../../apps.json)의 `inputs[].variable`이며 각 앱 가이드의 `입력` 표에도 있습니다. Portal은 `PROD_API_ENV_FILE`·`PROD_WEB_ENV_FILE`, 따로 반입한 Helm chart는 `<APP>_CHART_FILE`입니다.
 - 기존 DB에 연결할 때는 기존 credential과 맞춥니다. Keycloak 관리자·DB·사내 OIDC·Portal client 입력은 서로 다릅니다.
 
+### 공용 인증 입력 준비
+
+사내 SSO와 Etch Members 관리자 목록을 함께 운영할 때 사용합니다. [입력 템플릿](../../../iam/env/identity.env.example)을 checkout 밖의 운영 폴더에 `identity.env`로 복사합니다. 예시 위치는 `/appdata/etchax-config/identity.env`이며 파일 권한은 `0600`입니다. 사내에서 발급받은 `CORP_OIDC_CLIENT_ID`와 `CORP_OIDC_CLIENT_SECRET`을 채웁니다. `IAM_PLATFORM_ADMIN_USERNAMES`에 기존 계정의 EPID를 쉼표로 구분해 적습니다. 이 키가 없으면 IAM 원본의 목록을 사용하고, 빈 값이면 새 관리자를 추가하지 않습니다.
+
+[변경] 기존에 쓰던 두 앱 env를 원본으로 지정합니다. 이미 배포한 Keycloak에서는 현재 DB·관리자 값과 맞는 기존 env를 사용합니다. 둘 중 하나가 저장소 기본 env를 사용한다면 해당 인자를 생략합니다.
+
+```bash
+make identity-env-prepare IDENTITY_ENV="<공용 인증 env 경로>" KEYCLOAK_ENV="<기존 Keycloak env 경로>" IAM_ENV="<기존 IAM env 경로>"
+```
+
+성공하면 `identity.env.generated/`에 권한 `0600`으로 두 파일을 만들고 `KEYCLOAK_ENV=…`와 `IAM_ENV=…` 경로를 출력합니다. 기존 앱 env, 운영 Secret, 클러스터는 그대로 사용합니다. 실패하면 표시한 키의 입력과 파일 권한을 확인한 뒤 같은 명령을 다시 실행합니다.
+
+Keycloak에는 생성한 `KEYCLOAK_ENV`를, Etch Members에는 생성한 두 경로를 검사·배포·대조 명령에 전달합니다. 앱 가이드의 명령에서 env 경로만 바꾸면 됩니다. 운영 입력이나 원본 env를 갱신한 뒤 다시 생성하며, 생성본은 배포 입력으로 사용합니다. 출력된 경로만 기록하고 값은 출력하지 않습니다.
+
 ### VIP와 진입점
 
 공용 Traefik의 설치·갱신·확인은 [ingress 가이드](../../ingress/README.md)에 있습니다. APP VIP의 LB backend·상태 검사·TLS 종료 위치와 Worker의 80/443 충돌은 [Traefik 셋업](../ingress/setup.md)으로 확인하고, LB 작업은 [APP VIP와 LB](../infrastructure/access.md#app-vip와-lb) 절의 방법으로 합니다.

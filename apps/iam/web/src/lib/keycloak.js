@@ -14,7 +14,7 @@ export function initLogin() {
   return keycloak.init({ onLoad: "login-required", pkceMethod: "S256", checkLoginIframe: false })
 }
 
-/** 권한관리 웹을 쓰려면 realm-management의 manage-users role이 필요합니다. */
+/** Etch Members를 쓰려면 realm-management의 manage-users role이 필요합니다. */
 export function canManageUsers() {
   return keycloak.hasResourceRole("manage-users", "realm-management")
 }
